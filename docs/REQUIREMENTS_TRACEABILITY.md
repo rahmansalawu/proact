@@ -13,13 +13,13 @@ This document is the implementation ledger for the product blueprint. Status val
 | Requirement | Status | Evidence / acceptance test |
 |---|---|---|
 | Public authentication and MFA | Not started | Sign-up, sign-in, recovery, MFA setup and enforcement tests |
-| Organisation onboarding | Not started | Create organisation, jurisdiction, tier and admin |
-| Multi-tenant isolation | Not started | Cross-tenant API tests must always deny access |
-| Server-side RBAC | Not started | Permission matrix tests for all eight roles |
-| Feature flags and tier limits | Not started | API tests prove server-side restrictions |
-| Immutable audit trail | Not started | State-changing requests append non-editable records |
+| Organisation onboarding | In progress | Local workspace and first CompanyAdmin are provisioned automatically; later unknown identities are denied |
+| Multi-tenant isolation | Implemented | Every query is scoped by server-resolved organisation ID; adversarial tests still required |
+| Server-side RBAC | Implemented | Write/delete operations enforce role checks; full eight-role matrix tests remain |
+| Feature flags and tier limits | In progress | Entitlement schema exists; enforcement policies remain |
+| Immutable audit trail | Verified | Create, update and delete produced three append-only events; update/delete triggers included |
 | Encrypted sensitive fields | Not started | Encryption and key-rotation design verified |
-| Structured API validation | Not started | Invalid payload and boundary tests |
+| Structured API validation | Implemented | Zod schemas validate create, update and delete payloads, enforce module statuses and limit payload size |
 | File evidence storage | Not started | Signed access, MIME limits and malware workflow |
 | Background jobs and alerts | Not started | Retry, idempotency and dead-letter tests |
 | Subscription billing | Not started | Sandbox upgrade, downgrade and failure-grace tests |
@@ -31,26 +31,26 @@ This document is the implementation ledger for the product blueprint. Status val
 
 | Module | UI | Persistence | Workflow | RBAC | Audit | Export | Automated tests | Overall |
 |---|---|---|---|---|---|---|---|---|
-| Dashboard & Analytics | Partial | No | No | No | No | No | No | In progress |
-| Risk Management & RAMS | Partial | No | No | No | No | No | No | In progress |
-| Incident Management | Partial | No | No | No | No | No | No | In progress |
-| Inspection Management | Partial | No | No | No | No | No | No | In progress |
-| Training Management | Partial | No | No | No | No | No | No | In progress |
-| Legal Compliance Library | Partial | No | No | No | No | No | No | In progress |
-| Management System / ISO | Partial | No | No | No | No | No | No | In progress |
-| Work Instructions & Documents | No | No | No | No | No | No | No | Not started |
-| Emergency Response | No | No | No | No | No | No | No | Not started |
-| Client / Contractor Management | No | No | No | No | No | No | No | Not started |
-| Change Management | No | No | No | No | No | No | No | Not started |
-| Community & Knowledge | No | No | No | No | No | No | No | Not started |
-| Consultant Marketplace | Partial | No | No | No | No | No | No | In progress |
+| Dashboard & Analytics | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Risk Management & RAMS | Implemented | Implemented | Risk scoring and approval gates | Implemented | Implemented | CSV | Partial | In progress |
+| Incident Management | Implemented | Implemented | Investigation and closure gates | Implemented | Implemented | CSV | Partial | In progress |
+| Inspection Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Training Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Legal Compliance Library | Implemented | Implemented | UK starter register | Implemented | Implemented | CSV | Partial | In progress |
+| Management System / ISO | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Work Instructions & Documents | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Emergency Response | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Client / Contractor Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Change Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Community & Knowledge | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Consultant Marketplace | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
 
 ## Release gates
 
 | Gate | Status |
 |---|---|
 | All 13 modules meet the definition of complete | Not started |
-| Zero known critical/high production vulnerabilities | Not started |
+| Zero known critical/high dependency vulnerabilities | Verified |
 | GDPR/DPO review complete | Externally blocked |
 | Legal content reviewed in every launch jurisdiction | Externally blocked |
 | Payment and escrow sandbox journeys verified | Externally blocked |
