@@ -20,7 +20,7 @@ This document is the implementation ledger for the product blueprint. Status val
 | Immutable audit trail | Verified | Create, update and delete produced three append-only events; update/delete triggers included |
 | Encrypted sensitive fields | Not started | Encryption and key-rotation design verified |
 | Structured API validation | Implemented | Zod schemas validate create, update and delete payloads, enforce module statuses and limit payload size |
-| File evidence storage | Not started | Signed access, MIME limits and malware workflow |
+| File evidence storage | In progress | Tenant-scoped local SQLite attachments, MIME/size limits and audited downloads are implemented; hosted object storage and malware scanning remain |
 | Background jobs and alerts | Not started | Retry, idempotency and dead-letter tests |
 | Subscription billing | Not started | Sandbox upgrade, downgrade and failure-grace tests |
 | Data export and portability | Not started | User and organisation export packages |

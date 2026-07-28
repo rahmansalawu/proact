@@ -78,6 +78,34 @@ function derivePayload(module: string, payload: Record<string, unknown>) {
   return next;
 }
 
+const ALLOWED_EVIDENCE_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "text/plain",
+  "text/csv",
+]);
+const MAX_EVIDENCE_BYTES = 2 * 1024 * 1024;
+
+const evidenceInput = z.object({
+  action: z.literal("upload_evidence"),
+  recordId: z.string().uuid(),
+  fileName: z.string().trim().min(1).max(180),
+  mimeType: z.string().refine((value) => ALLOWED_EVIDENCE_TYPES.has(value), "Only PDF, JPG, PNG, WebP, TXT and CSV evidence is supported."),
+  sizeBytes: z.number().int().positive().max(MAX_EVIDENCE_BYTES),
+  contentBase64: z.string().min(4).max(Math.ceil(MAX_EVIDENCE_BYTES * 4 / 3) + 8),
+});
+
+function safeFileName(value: string) {
+  return value.replace(/[\u0000-\u001f\u007f/\\:]/g, "_").slice(0, 180);
+}
+
+function decodeBase64(value: string) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
 const recordBase = z.object({
   module: z.string().refine(isModuleKey, "Unknown module"),
   title: z.string().trim().min(3).max(180),
@@ -169,6 +197,18 @@ const schemaStatements = [
   )`,
   `CREATE INDEX IF NOT EXISTS module_records_module_idx ON module_records(organisation_id, module)`,
   `CREATE INDEX IF NOT EXISTS module_records_status_idx ON module_records(organisation_id, status)`,
+  `CREATE TABLE IF NOT EXISTS record_attachments (
+    id TEXT PRIMARY KEY,
+    organisation_id TEXT NOT NULL REFERENCES organisations(id),
+    record_id TEXT NOT NULL REFERENCES module_records(id),
+    file_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    content_base64 TEXT NOT NULL,
+    uploaded_by TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS record_attachments_record_idx ON record_attachments(organisation_id, record_id)`,
   `CREATE TABLE IF NOT EXISTS feature_entitlements (
     id TEXT PRIMARY KEY,
     tier TEXT NOT NULL,
@@ -214,7 +254,7 @@ async function ensureSchema() {
 function requestIdentity(request: Request) {
   const url = new URL(request.url);
   const forwardedEmail = request.headers.get("oai-authenticated-user-email");
-  const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  const isLocal = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
   if (!forwardedEmail && !isLocal) return null;
 
   const encodedName = request.headers.get("oai-authenticated-user-full-name");
@@ -296,7 +336,7 @@ function clientIp(request: Request) {
   return request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 }
 
-async function writeAudit(request: Request, actor: Actor, action: string, entityId: string, oldValues: unknown, newValues: unknown) {
+async function writeAudit(request: Request, actor: Actor, action: string, entityId: string, oldValues: unknown, newValues: unknown, entityType = "module_record") {
   await db().prepare(
     "INSERT INTO audit_logs (id, organisation_id, user_id, action, entity_type, entity_id, old_values, new_values, ip_address, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).bind(
@@ -304,7 +344,7 @@ async function writeAudit(request: Request, actor: Actor, action: string, entity
     actor.organisationId,
     actor.id,
     action,
-    "module_record",
+    entityType,
     entityId,
     oldValues == null ? null : JSON.stringify(oldValues),
     newValues == null ? null : JSON.stringify(newValues),
@@ -359,7 +399,24 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const selectedModule = url.searchParams.get("module");
     const includeAudit = url.searchParams.get("audit") === "1";
+    const attachmentId = url.searchParams.get("attachment");
     if (selectedModule && !isModuleKey(selectedModule)) return response({ error: { code: "INVALID_MODULE", message: "Unknown module." } }, 400);
+    if (attachmentId) {
+      const attachment = await db().prepare(
+        "SELECT id, file_name, mime_type, size_bytes, content_base64 FROM record_attachments WHERE id = ? AND organisation_id = ? LIMIT 1",
+      ).bind(attachmentId, actor.organisationId).first<{ id: string; file_name: string; mime_type: string; size_bytes: number; content_base64: string }>();
+      if (!attachment) return response({ error: { code: "NOT_FOUND", message: "Evidence file not found." } }, 404);
+      const bytes = decodeBase64(attachment.content_base64);
+      return new Response(bytes, {
+        headers: {
+          "content-type": attachment.mime_type,
+          "content-length": String(bytes.byteLength),
+          "content-disposition": `attachment; filename="${safeFileName(attachment.file_name).replaceAll('"', "")}"`,
+          "cache-control": "private, no-store",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    }
 
     const query = selectedModule
       ? db().prepare("SELECT * FROM module_records WHERE organisation_id = ? AND module = ? ORDER BY updated_at DESC").bind(actor.organisationId, selectedModule)
@@ -374,12 +431,16 @@ export async function GET(request: Request) {
           "SELECT id, action, entity_type, entity_id, old_values, new_values, created_at FROM audit_logs WHERE organisation_id = ? ORDER BY created_at DESC LIMIT 100",
         ).bind(actor.organisationId).all()).results
       : [];
+    const attachments = (await db().prepare(
+      "SELECT id, record_id, file_name, mime_type, size_bytes, uploaded_by, created_at FROM record_attachments WHERE organisation_id = ? ORDER BY created_at DESC",
+    ).bind(actor.organisationId).all()).results;
 
     return response({
       organisation,
       actor,
       records: recordsResult.results.map(parseRecord),
       audit: audits,
+      attachments,
     });
   } catch (error) {
     return errorResponse(error);
@@ -393,6 +454,35 @@ export async function POST(request: Request) {
     if (!actor) return response({ error: { code: "UNAUTHENTICATED", message: "Sign in is required." } }, 401);
     if (!canWrite(actor.role)) return response({ error: { code: "FORBIDDEN", message: "Your role cannot create records." } }, 403);
     const body = await request.json();
+    const evidence = evidenceInput.safeParse(body);
+    if (evidence.success) {
+      const database = db();
+      const record = await database.prepare(
+        "SELECT id, reference, title FROM module_records WHERE id = ? AND organisation_id = ? LIMIT 1",
+      ).bind(evidence.data.recordId, actor.organisationId).first<{ id: string; reference: string; title: string }>();
+      if (!record) return response({ error: { code: "NOT_FOUND", message: "The evidence record was not found." } }, 404);
+      let bytes: Uint8Array;
+      try { bytes = decodeBase64(evidence.data.contentBase64); } catch { return response({ error: { code: "INVALID_FILE", message: "The evidence content is not valid base64." } }, 400); }
+      if (bytes.byteLength !== evidence.data.sizeBytes || bytes.byteLength > MAX_EVIDENCE_BYTES) {
+        return response({ error: { code: "INVALID_FILE_SIZE", message: "The evidence size does not match or exceeds 2 MB." } }, 400);
+      }
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const metadata = {
+        id,
+        record_id: record.id,
+        file_name: safeFileName(evidence.data.fileName),
+        mime_type: evidence.data.mimeType,
+        size_bytes: bytes.byteLength,
+        uploaded_by: actor.id,
+        created_at: now,
+      };
+      await database.prepare(
+        "INSERT INTO record_attachments (id, organisation_id, record_id, file_name, mime_type, size_bytes, content_base64, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(id, actor.organisationId, record.id, metadata.file_name, metadata.mime_type, metadata.size_bytes, evidence.data.contentBase64, actor.id, now).run();
+      await writeAudit(request, actor, "UPLOAD", id, null, { ...metadata, record_reference: record.reference }, "record_attachment");
+      return response({ attachment: metadata }, 201);
+    }
     if (z.object({ action: z.literal("seed_uk_legal") }).safeParse(body).success) {
       const database = db();
       const now = new Date().toISOString();
@@ -488,13 +578,28 @@ export async function DELETE(request: Request) {
     const actor = await getActor(request);
     if (!actor) return response({ error: { code: "UNAUTHENTICATED", message: "Sign in is required." } }, 401);
     if (!["SuperAdmin", "CompanyAdmin"].includes(actor.role)) return response({ error: { code: "FORBIDDEN", message: "Only an administrator can delete records." } }, 403);
-    const { id } = z.object({ id: z.string().uuid() }).parse(await request.json());
+    const body = await request.json();
+    const attachmentDelete = z.object({ attachmentId: z.string().uuid() }).safeParse(body);
+    if (attachmentDelete.success) {
+      const attachment = await db().prepare(
+        "SELECT id, record_id, file_name, mime_type, size_bytes, uploaded_by, created_at FROM record_attachments WHERE id = ? AND organisation_id = ? LIMIT 1",
+      ).bind(attachmentDelete.data.attachmentId, actor.organisationId).first();
+      if (!attachment) return response({ error: { code: "NOT_FOUND", message: "Evidence file not found." } }, 404);
+      await db().prepare("DELETE FROM record_attachments WHERE id = ? AND organisation_id = ?").bind(attachmentDelete.data.attachmentId, actor.organisationId).run();
+      await writeAudit(request, actor, "DELETE", attachmentDelete.data.attachmentId, attachment, null, "record_attachment");
+      return response({ success: true });
+    }
+    const { id } = z.object({ id: z.string().uuid() }).parse(body);
     const existing = await db().prepare(
       "SELECT * FROM module_records WHERE id = ? AND organisation_id = ? LIMIT 1",
     ).bind(id, actor.organisationId).first<DbRecord>();
     if (!existing) return response({ error: { code: "NOT_FOUND", message: "Record not found." } }, 404);
+    const attachments = (await db().prepare(
+      "SELECT id, file_name, mime_type, size_bytes FROM record_attachments WHERE record_id = ? AND organisation_id = ?",
+    ).bind(id, actor.organisationId).all()).results;
+    await db().prepare("DELETE FROM record_attachments WHERE record_id = ? AND organisation_id = ?").bind(id, actor.organisationId).run();
     await db().prepare("DELETE FROM module_records WHERE id = ? AND organisation_id = ?").bind(id, actor.organisationId).run();
-    await writeAudit(request, actor, "DELETE", id, existing, null);
+    await writeAudit(request, actor, "DELETE", id, { ...existing, attachments }, null);
     return response({ success: true });
   } catch (error) {
     return errorResponse(error);

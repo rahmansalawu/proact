@@ -47,6 +47,20 @@ export const moduleRecords = sqliteTable("module_records", {
   index("module_records_status_idx").on(table.organisationId, table.status),
 ]);
 
+export const recordAttachments = sqliteTable("record_attachments", {
+  id: text("id").primaryKey(),
+  organisationId: text("organisation_id").notNull().references(() => organisations.id),
+  recordId: text("record_id").notNull().references(() => moduleRecords.id),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  contentBase64: text("content_base64").notNull(),
+  uploadedBy: text("uploaded_by").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("record_attachments_record_idx").on(table.organisationId, table.recordId),
+]);
+
 export const featureEntitlements = sqliteTable("feature_entitlements", {
   id: text("id").primaryKey(),
   tier: text("tier").notNull(),

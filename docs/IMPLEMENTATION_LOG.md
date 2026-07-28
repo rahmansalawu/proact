@@ -36,6 +36,9 @@ Implemented:
 - Added online/offline status feedback.
 - Added an idempotent UK legal starter register based on official HSE and legislation.gov.uk sources.
 - Added direct official-source links and a competent-person review disclaimer to starter legal records.
+- Added tenant-scoped local evidence attachments for every controlled record.
+- Added allow-listed PDF/image/text/CSV evidence types, a 2 MB limit, filename sanitisation and server-side decoded-size verification.
+- Added evidence metadata listing without file-body exposure, authenticated downloads with no-store/nosniff headers, administrator deletion and immutable upload/delete audit events.
 - Replaced the obsolete starter test suite.
 - Upgraded the framework, React server runtime, Vite and Cloudflare tooling to patched releases.
 - Pinned patched transitive PostCSS, Sharp, esbuild and brace-expansion releases.
@@ -59,11 +62,13 @@ Verified:
 - Workflow test records were deleted after verification and their immutable audit evidence was retained.
 - Full production and development dependency audit returned zero known vulnerabilities.
 - Strict TypeScript checking, production build and three automated product tests passed.
+- Evidence upload, metadata listing, safe download and deletion passed against local D1.
+- Disallowed executable MIME evidence returned HTTP 400, and normal workspace state did not expose base64 file content.
 
 Still required for module completeness:
 
 - Module-specific relational data models beyond the shared controlled-record foundation.
-- Evidence and certificate file storage.
+- Hosted object storage, malware scanning and certificate OCR (local SQLite evidence storage is implemented).
 - Incident witness management, action assignment and regulatory submission integration.
 - RAMS electronic signatures, revision history, workforce acknowledgements and PDF generation.
 - Inspection checklist execution and photo findings.

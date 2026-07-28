@@ -48,11 +48,22 @@ type AuditRecord = {
   created_at: string;
 };
 
+type EvidenceAttachment = {
+  id: string;
+  record_id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: string;
+  created_at: string;
+};
+
 type StateResponse = {
   organisation: { id: string; name: string; subscription_tier: string; jurisdiction: string };
   actor: { id: string; displayName: string; email: string; role: string };
   records: ProductRecord[];
   audit: AuditRecord[];
+  attachments: EvidenceAttachment[];
 };
 
 const completionStatuses = new Set(["Approved", "Completed", "Closed", "Conforming", "Published", "Verified", "All clear"]);
@@ -239,6 +250,57 @@ export default function Home() {
     }
   };
 
+  const uploadEvidence = async (record: ProductRecord, file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      setToast("Evidence files must be 2 MB or smaller.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const contentBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("The evidence file could not be read."));
+        reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? "");
+        reader.readAsDataURL(file);
+      });
+      const response = await fetch("/api/state", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "upload_evidence", recordId: record.id, fileName: file.name, mimeType: file.type || "application/octet-stream", sizeBytes: file.size, contentBase64 }),
+      });
+      const data = await response.json() as { attachment?: EvidenceAttachment; error?: { message: string } };
+      if (!response.ok || !data.attachment) throw new Error(data.error?.message ?? "The evidence file could not be uploaded.");
+      setState((current) => current ? { ...current, attachments: [data.attachment!, ...current.attachments] } : current);
+      setToast(`${data.attachment.file_name} attached to ${record.reference}.`);
+      void loadAudit();
+    } catch (requestError) {
+      setToast(requestError instanceof Error ? requestError.message : "The evidence file could not be uploaded.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteEvidence = async (attachment: EvidenceAttachment) => {
+    if (!window.confirm(`Delete evidence file ${attachment.file_name}? The audit event will be retained.`)) return;
+    setSaving(true);
+    try {
+      const response = await fetch("/api/state", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ attachmentId: attachment.id }),
+      });
+      const data = await response.json() as { error?: { message: string } };
+      if (!response.ok) throw new Error(data.error?.message ?? "The evidence file could not be deleted.");
+      setState((current) => current ? { ...current, attachments: current.attachments.filter((item) => item.id !== attachment.id) } : current);
+      setToast(`${attachment.file_name} deleted; its audit event was retained.`);
+      void loadAudit();
+    } catch (requestError) {
+      setToast(requestError instanceof Error ? requestError.message : "The evidence file could not be deleted.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const exportCsv = () => {
     const headers = ["Reference", "Title", "Status", "Priority", "Owner", "Due date", ...MODULE_MAP[activeModule].fields.map((field) => field.label)];
     const rows = visibleRecords.map((record) => [
@@ -294,7 +356,7 @@ export default function Home() {
     </div>
 
     {editorOpen && <RecordEditor definition={activeDefinition} record={editing} actorName={actor?.displayName ?? ""} saving={saving} onClose={() => { setEditorOpen(false); setEditing(null); }} onSave={saveRecord} />}
-    {selected && <RecordDrawer record={selected} definition={MODULE_MAP[selected.module]} saving={saving} onClose={() => setSelected(null)} onEdit={() => openEdit(selected)} onDelete={() => void deleteRecord(selected)} onStatus={(status) => void changeStatus(selected, status)} />}
+    {selected && <RecordDrawer record={selected} definition={MODULE_MAP[selected.module]} attachments={state?.attachments.filter((item) => item.record_id === selected.id) ?? []} canDeleteEvidence={actor?.role === "CompanyAdmin" || actor?.role === "SuperAdmin"} saving={saving} onClose={() => setSelected(null)} onEdit={() => openEdit(selected)} onDelete={() => void deleteRecord(selected)} onStatus={(status) => void changeStatus(selected, status)} onUpload={(file) => void uploadEvidence(selected, file)} onDeleteEvidence={(attachment) => void deleteEvidence(attachment)} />}
     {auditOpen && <AuditDrawer audit={state?.audit ?? []} records={state?.records ?? []} onClose={() => setAuditOpen(false)} />}
     {toast && <div className="toast" role="status"><CheckCircle2 size={18} />{toast}<button onClick={() => setToast("")} aria-label="Dismiss notification"><X size={16} /></button></div>}
   </div>;
@@ -428,12 +490,13 @@ function RiskPreview({ payload }: { payload: Record<string, unknown> }) {
   return <div className={`risk-preview ${rating.toLowerCase().replace(" ", "-")}`}><span>Initial risk</span><strong>{score || "—"}</strong><b>{rating}</b><span>Residual risk</span><strong>{residualScore || "—"}</strong><b>{residualRating}</b><small>Likelihood × consequence. Approval requires recorded residual risk and review by a competent person.</small></div>;
 }
 
-function RecordDrawer({ record, definition, saving, onClose, onEdit, onDelete, onStatus }: { record: ProductRecord; definition: ModuleDefinition; saving: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onStatus: (status: string) => void }) {
+function RecordDrawer({ record, definition, attachments, canDeleteEvidence, saving, onClose, onEdit, onDelete, onStatus, onUpload, onDeleteEvidence }: { record: ProductRecord; definition: ModuleDefinition; attachments: EvidenceAttachment[]; canDeleteEvidence: boolean; saving: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onStatus: (status: string) => void; onUpload: (file: File) => void; onDeleteEvidence: (attachment: EvidenceAttachment) => void }) {
   return <div className="drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="record-drawer" role="dialog" aria-modal="true" aria-labelledby="record-title">
     <div className="drawer-header"><div><span className="eyebrow">{record.reference}</span><h2 id="record-title">{record.title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close record"><X size={19} /></button></div>
     <div className="drawer-summary"><PriorityPill priority={record.priority} /><StatusPill status={record.status} /><span>Updated {formatDate(record.updatedAt)}</span></div>
     <div className="drawer-actions"><button className="secondary-button" onClick={onEdit}><Pencil size={15} /> Edit</button><label>Move to<select aria-label="Change record status" value={record.status} onChange={(event) => onStatus(event.target.value)} disabled={saving}>{definition.statuses.map((status) => <option key={status}>{status}</option>)}</select></label></div>
     <dl className="record-details"><div><dt>Owner</dt><dd>{record.owner}</dd></div><div><dt>Due date</dt><dd>{formatDate(record.dueDate)}</dd></div>{definition.fields.map((field) => <div key={field.key}><dt>{field.label}</dt><dd>{field.key === "sourceUrl" && typeof record.payload[field.key] === "string" && record.payload[field.key] ? <a href={String(record.payload[field.key])} target="_blank" rel="noreferrer">Open official source</a> : pretty(record.payload[field.key])}</dd></div>)}</dl>
+    <section className="evidence-section"><div className="evidence-heading"><div><strong>Evidence files</strong><span>PDF, JPG, PNG, WebP, TXT or CSV · maximum 2 MB</span></div><label className={`secondary-button ${saving ? "disabled" : ""}`}><Plus size={14} /> Attach<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.csv" disabled={saving} onChange={(event) => { const file = event.target.files?.[0]; if (file) onUpload(file); event.currentTarget.value = ""; }} /></label></div>{attachments.length ? <div className="evidence-list">{attachments.map((attachment) => <article key={attachment.id}><FileClock size={17} /><div><a href={`/api/state?attachment=${encodeURIComponent(attachment.id)}`}>{attachment.file_name}</a><span>{attachment.mime_type} · {Math.ceil(attachment.size_bytes / 1024)} KB</span></div>{canDeleteEvidence && <button onClick={() => onDeleteEvidence(attachment)} disabled={saving} aria-label={`Delete ${attachment.file_name}`}><Trash2 size={14} /></button>}</article>)}</div> : <p className="evidence-empty">No evidence attached yet.</p>}</section>
     <div className="drawer-proof"><ShieldCheck size={17} /><span>Changes to this record are tenant-scoped and appended to the immutable audit log.</span></div>
     <button className="danger-button" onClick={onDelete} disabled={saving}><Trash2 size={15} /> Delete record</button>
   </aside></div>;
