@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { MarketplaceWorkspace } from "./components/marketplace-workspace";
 import { MODULE_MAP, MODULES, type ModuleDefinition, type ModuleKey } from "./lib/modules";
 
 type ProductRecord = {
@@ -451,6 +452,8 @@ export default function Home() {
       <main id="main">
         {loading ? <LoadingState /> : error || !state ? <ApiError message={error} onRetry={() => void loadState()} /> : activeModule === "dashboard"
           ? <Dashboard state={state} onNavigate={chooseModule} onCreate={(moduleKey) => { chooseModule(moduleKey); window.setTimeout(openCreate, 0); }} />
+          : activeModule === "marketplace"
+            ? <MarketplaceWorkspace records={moduleRecords} actor={state.actor} saving={saving} onSave={saveRecord} />
           : <ModuleWorkspace definition={activeDefinition} records={visibleRecords} allRecords={moduleRecords} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onCreate={openCreate} onSelect={setSelected} onExport={exportCsv} onSeedUkLegal={() => void seedUkLegal()} saving={saving} />}
       </main>
     </div>

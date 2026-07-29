@@ -61,7 +61,7 @@ function workflowIssues(input: WorkflowInput) {
   }
   if (input.module === "change" && input.status === "Approved") requireFields(["approver"], "Approved changes require an approver.");
   if (input.module === "change" && input.status === "Verified") requireFields(["approver", "verification"], "Verified changes require an approver and post-implementation verification.");
-  if (input.module === "marketplace" && input.status === "Completed") requireFields(["milestone", "completionEvidence", "rating"], "Completed engagements require milestone evidence and a rating.");
+  if (input.module === "marketplace" && input.status === "Completed" && p.marketplaceType === "engagement") requireFields(["milestone", "completionEvidence", "rating"], "Completed engagements require milestone evidence and a client rating.");
   return issues;
 }
 

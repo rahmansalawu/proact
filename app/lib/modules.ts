@@ -142,7 +142,7 @@ export const MODULES: ModuleDefinition[] = [
     { key: "topic", label: "Topic", type: "text", required: true },
     { key: "mediaUrl", label: "Media URL", type: "text" },
   ] },
-  { key: "marketplace", label: "Consultant Marketplace", shortLabel: "Marketplace", description: "Verified consultants, briefs, engagements, milestones and ratings.", icon: BriefcaseBusiness, referencePrefix: "ENG", statuses: ["Proposed", "Negotiating", "Funded", "Active", "Completed", "Disputed"], fields: [
+  { key: "marketplace", label: "Consultant Marketplace", shortLabel: "Marketplace", description: "Professional profiles, discovery, community, engagements, test escrow and two-way ratings.", icon: BriefcaseBusiness, referencePrefix: "ENG", statuses: ["Profile active", "Unavailable", "Draft", "Published", "Proposed", "Negotiating", "Funded", "Active", "Completed", "Disputed"], fields: [
     { key: "consultant", label: "Consultant / firm", type: "text", required: true },
     { key: "specialism", label: "Specialism", type: "text", required: true },
     { key: "brief", label: "Project brief", type: "textarea", required: true },

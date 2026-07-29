@@ -43,7 +43,7 @@ This document is the implementation ledger for the product blueprint. Status val
 | Client / Contractor Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
 | Change Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
 | Community & Knowledge | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
-| Consultant Marketplace | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Consultant Marketplace | Dedicated profiles, discovery, community and engagements | Implemented (typed JSON records) | Profiles, filters, posts, comments, test escrow, disputes and two-way ratings | Implemented | Implemented | CSV / backup | Partial | In progress — external OAuth and regulated payments remain |
 
 ## Release gates
 

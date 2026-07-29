@@ -68,3 +68,22 @@ test("enforces UK legal and module-specific workflow controls", async () => {
   assert.match(modules, /residualLikelihood/);
   assert.match(modules, /correctiveActions/);
 });
+
+test("implements the dedicated consultant marketplace workflows", async () => {
+  const [marketplace, route, modules] = await Promise.all([
+    readFile(new URL("../app/components/marketplace-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/state/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/modules.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(marketplace, /marketplaceType/);
+  assert.match(marketplace, /Discovery filters/);
+  assert.match(marketplace, /Qualifications/);
+  assert.match(marketplace, /NEBOSH \/ IOSH \/ OSHCR/);
+  assert.match(marketplace, /LinkedIn OAuth is not active yet/);
+  assert.match(marketplace, /youtube-nocookie\.com/);
+  assert.match(marketplace, /Held in test escrow/);
+  assert.match(marketplace, /Consultant rates client/);
+  assert.match(marketplace, /Topic thread/);
+  assert.match(route, /p\.marketplaceType === "engagement"/);
+  assert.match(modules, /"Profile active"/);
+});

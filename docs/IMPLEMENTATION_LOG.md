@@ -48,6 +48,14 @@ Implemented:
 - Added private no-store, nosniff and attachment-disposition controls to backup downloads.
 - Added temporary no-login public demo access for the Sites hostname, isolated in a separate shared demo organisation.
 - Added a persistent public-demo warning prohibiting personal, confidential or commercially sensitive test data.
+- Replaced the Marketplace generic record screen with a dedicated, isolated product workspace.
+- Added consultant profiles with qualifications, professional memberships, experience, UK location, jurisdiction expertise, specialisms, availability, daily rate, biography and public professional/media links.
+- Added consultant discovery filters for location, specialism, jurisdiction, availability, maximum day rate and minimum rating.
+- Added a professional community feed supporting updates, long-form articles, topic threads, reactions, comments and allow-listed YouTube privacy-enhanced embeds.
+- Added marketplace briefs and engagements with budgets, agreed rates, milestones, sign-off evidence, dispute status and two-way client/consultant ratings.
+- Added a derived visible trust score based on ratings, verification state and review volume.
+- Added an explicitly labelled test-escrow state machine that does not move or custody money.
+- Isolated marketplace server validation by record type so published posts and active profiles cannot be subjected to engagement completion gates.
 - Replaced the obsolete starter test suite.
 - Upgraded the framework, React server runtime, Vite and Cloudflare tooling to patched releases.
 - Pinned patched transitive PostCSS, Sharp, esbuild and brace-expansion releases.
@@ -91,8 +99,8 @@ Still required for module completeness:
 - Offline emergency muster and QR scanning.
 - Contractor invitation/orientation and document verification.
 - Change impact review and multi-step approvals.
-- Community comments, moderation and media handling.
-- Consultant profiles, messaging, milestone, escrow and rating workflows.
+- Community moderation, reporting and hosted media handling (marketplace reactions, comments and safe YouTube embeds are implemented).
+- Marketplace direct messaging, real LinkedIn OAuth activity sync, regulated payment escrow, provider webhooks and production dispute operations.
 - Feature entitlement enforcement.
 - Backup restore/import workflow (full JSON export is implemented).
 - GDPR self-service workflows.
