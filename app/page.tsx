@@ -73,7 +73,7 @@ type RecordAction = {
 
 type StateResponse = {
   organisation: { id: string; name: string; subscription_tier: string; jurisdiction: string };
-  actor: { id: string; displayName: string; email: string; role: string };
+  actor: { id: string; displayName: string; email: string; role: string; demoMode: boolean };
   records: ProductRecord[];
   audit: AuditRecord[];
   attachments: EvidenceAttachment[];
@@ -446,6 +446,7 @@ export default function Home() {
           <div className="top-avatar">{actor ? initials(actor.displayName) : "..."}</div>
         </div>
       </header>
+      {actor?.demoMode && <div className="demo-banner"><CircleAlert size={16} /><div><strong>Public demo mode</strong><span>No login is required. This is a shared testing workspace—do not enter personal, confidential or commercially sensitive information.</span></div></div>}
 
       <main id="main">
         {loading ? <LoadingState /> : error || !state ? <ApiError message={error} onRetry={() => void loadState()} /> : activeModule === "dashboard"

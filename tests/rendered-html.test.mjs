@@ -60,6 +60,9 @@ test("enforces UK legal and module-specific workflow controls", async () => {
   assert.match(route, /Close all corrective actions/);
   assert.match(route, /backupRequested/);
   assert.match(route, /schemaVersion: 3/);
+  assert.match(route, /\.chatgpt\.site/);
+  assert.match(route, /proact-public-demo/);
+  assert.match(route, /demo\.tester@proact\.local/);
   assert.match(legal, /legislation\.gov\.uk/);
   assert.match(legal, /hse\.gov\.uk\/riddor/);
   assert.match(modules, /residualLikelihood/);

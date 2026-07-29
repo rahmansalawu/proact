@@ -46,6 +46,8 @@ Implemented:
 - Fixed partial record updates so omitted defaulted fields cannot overwrite the existing payload or priority.
 - Added an administrator-only full JSON backup containing organisation, users/roles, records, actions, attachment contents and immutable audit history.
 - Added private no-store, nosniff and attachment-disposition controls to backup downloads.
+- Added temporary no-login public demo access for the Sites hostname, isolated in a separate shared demo organisation.
+- Added a persistent public-demo warning prohibiting personal, confidential or commercially sensitive test data.
 - Replaced the obsolete starter test suite.
 - Upgraded the framework, React server runtime, Vite and Cloudflare tooling to patched releases.
 - Pinned patched transitive PostCSS, Sharp, esbuild and brace-expansion releases.

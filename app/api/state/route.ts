@@ -165,6 +165,7 @@ type Actor = {
   email: string;
   displayName: string;
   role: string;
+  demoMode: boolean;
 };
 
 type DbRecord = {
@@ -296,7 +297,8 @@ function requestIdentity(request: Request) {
   const url = new URL(request.url);
   const forwardedEmail = request.headers.get("oai-authenticated-user-email");
   const isLocal = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
-  if (!forwardedEmail && !isLocal) return null;
+  const isHostedDemo = url.hostname.endsWith(".chatgpt.site");
+  if (!forwardedEmail && !isLocal && !isHostedDemo) return null;
 
   const encodedName = request.headers.get("oai-authenticated-user-full-name");
   const encodedCorrectly = request.headers.get("oai-authenticated-user-full-name-encoding") === "percent-encoded-utf-8";
@@ -306,8 +308,9 @@ function requestIdentity(request: Request) {
   }
 
   return {
-    email: forwardedEmail?.toLowerCase() ?? "alex.king@proact.local",
-    displayName: fullName ?? (forwardedEmail ? forwardedEmail.split("@")[0] : "Alex King"),
+    email: forwardedEmail?.toLowerCase() ?? (isHostedDemo ? "demo.tester@proact.local" : "alex.king@proact.local"),
+    displayName: fullName ?? (forwardedEmail ? forwardedEmail.split("@")[0] : isHostedDemo ? "Demo Tester" : "Alex King"),
+    demoMode: !forwardedEmail && isHostedDemo,
   };
 }
 
@@ -318,16 +321,18 @@ async function getActor(request: Request): Promise<Actor | null> {
   const database = db();
   const now = new Date().toISOString();
 
+  const organisationSlug = identity.demoMode ? "proact-public-demo" : "apex-infrastructure";
+  const organisationName = identity.demoMode ? "ProAct Public Demo" : "Apex Infrastructure";
   let organisation = await database.prepare(
     "SELECT id, name, subscription_tier, jurisdiction FROM organisations WHERE slug = ? LIMIT 1",
-  ).bind("apex-infrastructure").first<{ id: string; name: string; subscription_tier: string; jurisdiction: string }>();
+  ).bind(organisationSlug).first<{ id: string; name: string; subscription_tier: string; jurisdiction: string }>();
 
   if (!organisation) {
     const organisationId = crypto.randomUUID();
     await database.prepare(
       "INSERT INTO organisations (id, name, slug, subscription_tier, jurisdiction, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(organisationId, "Apex Infrastructure", "apex-infrastructure", "company_standard", "UK", "{}", now, now).run();
-    organisation = { id: organisationId, name: "Apex Infrastructure", subscription_tier: "company_standard", jurisdiction: "UK" };
+    ).bind(organisationId, organisationName, organisationSlug, "company_standard", "UK", JSON.stringify({ demoMode: identity.demoMode }), now, now).run();
+    organisation = { id: organisationId, name: organisationName, subscription_tier: "company_standard", jurisdiction: "UK" };
   }
 
   let actor = await database.prepare(
@@ -354,6 +359,7 @@ async function getActor(request: Request): Promise<Actor | null> {
     email: actor.email,
     displayName: actor.display_name,
     role: actor.role,
+    demoMode: identity.demoMode,
   };
 }
 
