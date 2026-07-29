@@ -24,7 +24,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
+import { CommunityWorkspace } from "./components/community-workspace";
 import { MarketplaceWorkspace } from "./components/marketplace-workspace";
 import { MODULE_MAP, MODULES, type ModuleDefinition, type ModuleKey } from "./lib/modules";
 
@@ -83,6 +84,77 @@ type StateResponse = {
 
 const completionStatuses = new Set(["Approved", "Completed", "Closed", "Conforming", "Published", "Verified", "All clear"]);
 const riskStatuses = new Set(["Overdue", "Expired", "Gap identified", "Review required", "Disputed", "Restricted", "Rejected"]);
+const LOCAL_ASSIST_MODULES = new Set<ModuleKey>(["rams", "incidents", "iso", "training"]);
+const MODULE_WORKFLOWS: Partial<Record<ModuleKey, { title: string; detail: string }[]>> = {
+  rams: [
+    { title: "MEEPS Method Statement", detail: "Materials, equipment, environment, people and safe-system sequence." },
+    { title: "COSHH Assessment", detail: "Substances, SDS links, exposure limits and health controls." },
+    { title: "Return-to-Work Plan", detail: "Occupational-health risk and reasonable adjustments." },
+  ],
+  incidents: [
+    { title: "Initial report", detail: "Classify the event, capture witnesses and make the area safe." },
+    { title: "Investigation & RCA", detail: "Evidence, supervisor statement, 5 Whys and fishbone factors." },
+    { title: "RIDDOR & learning", detail: "Decision record, corrective actions and lesson learnt." },
+  ],
+  inspections: [
+    { title: "Scheduled inspection", detail: "Assign an inspector, frequency, checklist and due date." },
+    { title: "Pre-use check", detail: "Mobile-friendly equipment check and failed-item capture." },
+    { title: "Close findings", detail: "Score compliance, assign actions and retain evidence." },
+  ],
+  training: [
+    { title: "Training matrix", detail: "Map job roles to mandatory competence requirements." },
+    { title: "Course & assessment", detail: "Record content, assessment type, pass grade and result." },
+    { title: "Certificate & sign-off", detail: "Track expiry and manager competence verification." },
+  ],
+  legal: [
+    { title: "UK regulation register", detail: "Plain-English duties with official source links." },
+    { title: "Applicability review", detail: "Record sector relevance, owner and compliance evidence." },
+    { title: "Review control", detail: "Track update dates, gaps and next competent-person review." },
+  ],
+  iso: [
+    { title: "ISO gap analysis", detail: "Clause scoring for ISO 45001, 14001 and 9001." },
+    { title: "NCR & corrective action", detail: "Turn low scores into owned, due-dated actions." },
+    { title: "PTW, SWOT & policy", detail: "Issue permits and control strategic management records." },
+  ],
+  documents: [
+    { title: "Author", detail: "Create an SOP, policy, procedure, form or work instruction." },
+    { title: "Review & approve", detail: "Named reviewer, effective date and controlled version." },
+    { title: "Publish & supersede", detail: "Retain revision history and obsolete earlier versions." },
+  ],
+  emergency: [
+    { title: "Muster & headcount", detail: "Expected, present, exempt and unaccounted totals." },
+    { title: "Roles & contacts", detail: "Fire Marshals, First Aiders, IMT and emergency contacts." },
+    { title: "Drill record", detail: "Start/all-clear time, accuracy, observations and actions." },
+  ],
+  contractors: [
+    { title: "Onboard contractor", detail: "Scope, competence, insurance and orientation." },
+    { title: "Approve RAMS", detail: "Link and approve contractor task risk controls." },
+    { title: "Issue PTW", detail: "Track permit reference through issue and close-out." },
+  ],
+  change: [
+    { title: "Request & assess", detail: "Reason, affected systems, HSE impact and consultation." },
+    { title: "Approve & implement", detail: "Named approval, actions and implementation date." },
+    { title: "Verify effectiveness", detail: "Post-change review linked to affected records." },
+  ],
+  community: [
+    { title: "Safety update", detail: "Short-form operational and professional updates." },
+    { title: "Article or toolbox talk", detail: "Long-form learning linked to a source record." },
+    { title: "Discussion & media", detail: "Topic-led knowledge sharing with controlled links." },
+  ],
+};
+const MODULE_CONNECTIONS: Partial<Record<ModuleKey, ModuleKey[]>> = {
+  rams: ["contractors", "incidents", "documents"],
+  incidents: ["rams", "community", "training"],
+  inspections: ["incidents", "contractors", "iso"],
+  training: ["contractors", "emergency", "incidents"],
+  legal: ["iso", "documents", "change"],
+  iso: ["legal", "documents", "change"],
+  documents: ["rams", "iso", "change"],
+  emergency: ["training", "incidents", "documents"],
+  contractors: ["rams", "iso", "training"],
+  change: ["rams", "documents", "training"],
+  community: ["incidents", "training", "marketplace"],
+};
 
 function initials(name: string) {
   return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
@@ -92,6 +164,13 @@ function pretty(value: unknown) {
   if (value == null || value === "") return "Not recorded";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
+}
+
+function safeExternalUrl(value: unknown) {
+  try {
+    const parsed = new URL(String(value ?? ""));
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.toString() : "";
+  } catch { return ""; }
 }
 
 function formatDate(value: string | null) {
@@ -260,6 +339,27 @@ export default function Home() {
       setToast(data.inserted ? `${data.inserted} official UK starter entries added.` : "The UK starter register is already up to date.");
     } catch (requestError) {
       setToast(requestError instanceof Error ? requestError.message : "The UK starter register could not be loaded.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const seedSimulation = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/state", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "seed_simulation" }),
+      });
+      const data = await response.json() as { recordsInserted?: number; recordsExisting?: number; actionsInserted?: number; modulesPopulated?: number; error?: { message: string } };
+      if (!response.ok) throw new Error(data.error?.message ?? "The simulated workspace could not be loaded.");
+      await loadState();
+      setToast(data.recordsInserted
+        ? `${data.recordsInserted} simulated records and ${data.actionsInserted ?? 0} actions added across ${data.modulesPopulated ?? 12} modules.`
+        : "The operational simulation is already fully loaded.");
+    } catch (requestError) {
+      setToast(requestError instanceof Error ? requestError.message : "The simulated workspace could not be loaded.");
     } finally {
       setSaving(false);
     }
@@ -451,10 +551,12 @@ export default function Home() {
 
       <main id="main">
         {loading ? <LoadingState /> : error || !state ? <ApiError message={error} onRetry={() => void loadState()} /> : activeModule === "dashboard"
-          ? <Dashboard state={state} onNavigate={chooseModule} onCreate={(moduleKey) => { chooseModule(moduleKey); window.setTimeout(openCreate, 0); }} />
+          ? <Dashboard state={state} saving={saving} onSeedSimulation={() => void seedSimulation()} onNavigate={chooseModule} onCreate={(moduleKey) => { chooseModule(moduleKey); window.setTimeout(openCreate, 0); }} />
+          : activeModule === "community"
+            ? <CommunityWorkspace records={moduleRecords} allRecords={state.records} actorName={state.actor.displayName} saving={saving} onSave={saveRecord} />
           : activeModule === "marketplace"
             ? <MarketplaceWorkspace records={moduleRecords} actor={state.actor} saving={saving} onSave={saveRecord} />
-          : <ModuleWorkspace definition={activeDefinition} records={visibleRecords} allRecords={moduleRecords} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onCreate={openCreate} onSelect={setSelected} onExport={exportCsv} onSeedUkLegal={() => void seedUkLegal()} saving={saving} />}
+          : <ModuleWorkspace definition={activeDefinition} records={visibleRecords} allRecords={moduleRecords} allProductRecords={state.records} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onCreate={openCreate} onSelect={setSelected} onExport={exportCsv} onSeedUkLegal={() => void seedUkLegal()} onNavigate={chooseModule} saving={saving} />}
       </main>
     </div>
 
@@ -474,7 +576,7 @@ function LoadingState() {
   return <div className="page"><div className="page-heading skeleton-heading"><div><i /><b /><span /></div></div><div className="skeleton-grid">{[1,2,3,4].map((item) => <i key={item} />)}</div><div className="skeleton-panel" /></div>;
 }
 
-function Dashboard({ state, onNavigate, onCreate }: { state: StateResponse; onNavigate: (moduleKey: ModuleKey) => void; onCreate: (moduleKey: ModuleKey) => void }) {
+function Dashboard({ state, saving, onSeedSimulation, onNavigate, onCreate }: { state: StateResponse; saving: boolean; onSeedSimulation: () => void; onNavigate: (moduleKey: ModuleKey) => void; onCreate: (moduleKey: ModuleKey) => void }) {
   const records = state.records;
   const actions = state.actions ?? [];
   const now = new Date();
@@ -484,9 +586,25 @@ function Dashboard({ state, onNavigate, onCreate }: { state: StateResponse; onNa
   const assurance = records.length ? Math.round((completed / records.length) * 100) : 0;
   const activeModules = new Set(records.map((record) => record.module)).size;
   const recent = [...records].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 6);
+  const incidents = records.filter((record) => record.module === "incidents");
+  const inspections = records.filter((record) => record.module === "inspections");
+  const training = records.filter((record) => record.module === "training");
+  const year = new Date().getFullYear();
+  const riddorYtd = incidents.filter((record) => String(record.payload.riddor) === "Reportable" && new Date(String(record.payload.occurredAt || record.createdAt)).getFullYear() === year).length;
+  const nearMisses = incidents.filter((record) => ["Near miss", "High potential near miss"].includes(String(record.payload.eventType))).length;
+  const dafw = incidents.reduce((total, record) => total + Number(record.payload.daysAwayFromWork || 0), 0);
+  const completedInspections = inspections.filter((record) => record.status === "Completed").length;
+  const expiringTraining = training.filter((record) => {
+    const expiry = new Date(String(record.payload.expiryDate || ""));
+    const days = (expiry.getTime() - Date.now()) / 86_400_000;
+    return days >= 0 && days <= 30;
+  }).length;
+  const safetyAlert = records.find((record) => record.module === "community" && record.priority === "Critical" && record.status === "Published");
+  const simulationCount = records.filter((record) => record.payload.simulatedData === true).length;
 
   return <div className="page">
-    <div className="page-heading"><div><span className="eyebrow">UK ASSURANCE WORKSPACE</span><h1>Good morning, {state.actor.displayName.split(" ")[0]}.</h1><p>Your live HSE position is calculated from {records.length} controlled records.</p></div><div className="heading-actions"><button className="secondary-button" onClick={() => onNavigate("incidents")}><AlertTriangle size={16} /> View incidents</button><button className="primary-button" onClick={() => onCreate("incidents")}><Plus size={16} /> Report incident</button></div></div>
+    <div className="page-heading"><div><span className="eyebrow">UK ASSURANCE WORKSPACE</span><h1>Good morning, {state.actor.displayName.split(" ")[0]}.</h1><p>Your live HSE position is calculated from {records.length} controlled records.</p></div><div className="heading-actions"><button className="secondary-button" onClick={onSeedSimulation} disabled={saving}><Activity size={16} /> {simulationCount ? "Simulation loaded" : "Load simulation"}</button><button className="secondary-button" onClick={() => onNavigate("incidents")}><AlertTriangle size={16} /> View incidents</button><button className="primary-button" onClick={() => onCreate("incidents")}><Plus size={16} /> Report incident</button></div></div>
+    {simulationCount > 0 && <div className="simulation-banner"><Activity size={17} /><div><strong>Operational simulation active</strong><span>{simulationCount} clearly labelled simulated records are driving the dashboards and workflows. Existing workspace records remain unchanged.</span></div></div>}
     <section className="command-card live-command">
       <div className="score-block"><div className="score-ring" style={{ background: `conic-gradient(#49c58a 0 ${assurance}%, rgba(255,255,255,.13) ${assurance}% 100%)` }}><span>{assurance}</span><small>/100</small></div><div><span className="eyebrow light">LIVE ASSURANCE SCORE</span><h2>{assurance >= 80 ? "Controls are performing strongly" : assurance >= 60 ? "Assurance needs attention" : "Control gaps require action"}</h2><p>Based on closed, approved, verified and conforming records across every active module.</p><div className="trend-up"><Activity size={15} /> Recalculates as workflows progress</div></div></div>
       <div className="status-grid">
@@ -494,6 +612,14 @@ function Dashboard({ state, onNavigate, onCreate }: { state: StateResponse; onNa
         <button onClick={() => onNavigate("inspections")}><span className="status-dot amber" /><div><strong>{overdue}</strong><small>Overdue records</small></div><ChevronRight size={17} /></button>
         <button onClick={() => onNavigate("documents")}><span className="status-dot green" /><div><strong>{activeModules}/12</strong><small>Modules active</small></div><ChevronRight size={17} /></button>
       </div>
+    </section>
+    {safetyAlert && <button className="safety-alert" onClick={() => onNavigate("community")}><AlertTriangle size={18} /><div><strong>Priority safety alert</strong><span>{safetyAlert.title}</span></div><ChevronRight size={17} /></button>}
+    <section className="hse-kpi-grid" aria-label="HSE performance indicators">
+      <button onClick={() => onNavigate("incidents")}><span>RIDDOR YTD</span><strong>{riddorYtd}</strong><small>Reportable events</small></button>
+      <button onClick={() => onNavigate("incidents")}><span>DAFW</span><strong>{dafw}</strong><small>Days away from work</small></button>
+      <button onClick={() => onNavigate("incidents")}><span>Near misses</span><strong>{nearMisses}</strong><small>Leading indicator</small></button>
+      <button onClick={() => onNavigate("inspections")}><span>Inspections</span><strong>{completedInspections}/{inspections.length}</strong><small>Completed</small></button>
+      <button onClick={() => onNavigate("training")}><span>Training alerts</span><strong>{expiringTraining}</strong><small>Expiring within 30 days</small></button>
     </section>
     <section className="module-health-grid">
       {MODULES.filter((item) => item.key !== "dashboard").map((item) => {
@@ -513,20 +639,27 @@ function Dashboard({ state, onNavigate, onCreate }: { state: StateResponse; onNa
   </div>;
 }
 
-function ModuleWorkspace({ definition, records, allRecords, search, setSearch, statusFilter, setStatusFilter, onCreate, onSelect, onExport, onSeedUkLegal, saving }: {
-  definition: ModuleDefinition; records: ProductRecord[]; allRecords: ProductRecord[]; search: string; setSearch: (value: string) => void; statusFilter: string; setStatusFilter: (value: string) => void; onCreate: () => void; onSelect: (record: ProductRecord) => void; onExport: () => void; onSeedUkLegal: () => void; saving: boolean;
+function ModuleWorkspace({ definition, records, allRecords, allProductRecords, search, setSearch, statusFilter, setStatusFilter, onCreate, onSelect, onExport, onSeedUkLegal, onNavigate, saving }: {
+  definition: ModuleDefinition; records: ProductRecord[]; allRecords: ProductRecord[]; allProductRecords: ProductRecord[]; search: string; setSearch: (value: string) => void; statusFilter: string; setStatusFilter: (value: string) => void; onCreate: () => void; onSelect: (record: ProductRecord) => void; onExport: () => void; onSeedUkLegal: () => void; onNavigate: (moduleKey: ModuleKey) => void; saving: boolean;
 }) {
   const Icon = definition.icon;
   const complete = allRecords.filter((record) => completionStatuses.has(record.status)).length;
   const attention = allRecords.filter((record) => record.priority === "High" || record.priority === "Critical" || riskStatuses.has(record.status)).length;
   const due = allRecords.filter((record) => record.dueDate && new Date(record.dueDate) < new Date() && !completionStatuses.has(record.status)).length;
 
+  const workflows = MODULE_WORKFLOWS[definition.key] ?? [];
+  const connections = MODULE_CONNECTIONS[definition.key] ?? [];
+
   return <div className="page">
     <div className="page-heading module-heading"><div><span className="eyebrow">MODULE {String(MODULES.findIndex((item) => item.key === definition.key)).padStart(2, "0")} OF 12</span><h1>{definition.label}</h1><p>{definition.description}</p></div><div className="heading-actions">{definition.key === "legal" && <button className="secondary-button" onClick={onSeedUkLegal} disabled={saving}><BookOpenCheck size={16} /> {saving ? "Loading..." : "Load UK starter register"}</button>}<button className="secondary-button" onClick={onExport} disabled={!records.length}><Download size={16} /> Export CSV</button><button className="primary-button" onClick={onCreate}><Plus size={16} /> New record</button></div></div>
+    <section className="module-workflow-grid" aria-label={`${definition.label} workflows`}>
+      {workflows.map((workflow, index) => <button key={workflow.title} onClick={onCreate}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{workflow.title}</strong><small>{workflow.detail}</small></div><Plus size={15} /></button>)}
+    </section>
     <section className="summary-row module-summary"><Summary label="Total records" value={String(allRecords.length)} detail="Tenant-controlled" tone="blue" /><Summary label="Completed / controlled" value={String(complete)} detail={`${allRecords.length ? Math.round(complete/allRecords.length*100) : 0}% completion`} tone="green" /><Summary label="Need attention" value={String(attention)} detail="High priority or exception" tone="red" /><Summary label="Overdue" value={String(due)} detail="Past due and still open" tone="amber" /></section>
+    {connections.length > 0 && <section className="module-connections"><span>CONNECTED CONTROLS</span>{connections.map((key) => <button key={key} onClick={() => onNavigate(key)}>{MODULE_MAP[key].shortLabel}<b>{allProductRecords.filter((record) => record.module === key).length}</b><ChevronRight size={13} /></button>)}</section>}
     <section className="panel records-panel">
       <div className="records-toolbar"><div className="inner-search"><Search size={16} /><input aria-label={`Search ${definition.label}`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${definition.shortLabel.toLowerCase()} records...`} /></div><label><Filter size={15} /><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All</option>{definition.statuses.map((status) => <option key={status}>{status}</option>)}</select></label><span>{records.length} shown</span></div>
-      {records.length ? <div className="record-table"><div className="record-table-head"><span>REFERENCE</span><span>RECORD</span><span>OWNER</span><span>DUE</span><span>PRIORITY</span><span>STATUS</span><span /></div>{records.map((record) => <button className="record-table-row" key={record.id} onClick={() => onSelect(record)}><strong>{record.reference}</strong><span><b>{record.title}</b><small>{firstPayloadValue(record.payload)}</small></span><span>{record.owner}</span><span>{formatDate(record.dueDate)}</span><span><PriorityPill priority={record.priority} /></span><span><StatusPill status={record.status} /></span><ChevronRight size={17} /></button>)}</div>
+      {records.length ? <div className="record-table"><div className="record-table-head"><span>REFERENCE</span><span>RECORD</span><span>OWNER</span><span>DUE</span><span>PRIORITY</span><span>STATUS</span><span /></div>{records.map((record) => <button className="record-table-row" key={record.id} onClick={() => onSelect(record)}><strong>{record.reference}</strong><span><b>{record.title}{record.payload.simulatedData === true && <em className="simulated-badge">Simulated</em>}</b><small>{firstPayloadValue(record.payload)}</small></span><span>{record.owner}</span><span>{formatDate(record.dueDate)}</span><span><PriorityPill priority={record.priority} /></span><span><StatusPill status={record.status} /></span><ChevronRight size={17} /></button>)}</div>
         : <div className="large-empty"><span><Icon size={31} /></span><h2>{allRecords.length ? "No matching records" : `Start using ${definition.shortLabel}`}</h2><p>{allRecords.length ? "Clear the search or status filter to see more records." : `Create the first controlled record for ${definition.description.toLowerCase()}`}</p><button className="primary-button" onClick={onCreate}><Plus size={16} /> Create first record</button></div>}
     </section>
   </div>;
@@ -534,6 +667,10 @@ function ModuleWorkspace({ definition, records, allRecords, search, setSearch, s
 
 function Summary({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: string }) {
   return <article className="summary-stat"><span className={`summary-accent ${tone}`} /><p>{label}</p><strong>{value}</strong><small>{detail}</small></article>;
+}
+
+function fieldVisible(field: ModuleDefinition["fields"][number], payload: Record<string, unknown>) {
+  return !field.condition || field.condition.values.includes(String(payload[field.condition.key] ?? ""));
 }
 
 function RecordEditor({ definition, record, actorName, saving, onClose, onSave }: { definition: ModuleDefinition; record: ProductRecord | null; actorName: string; saving: boolean; onClose: () => void; onSave: (input: Omit<ProductRecord, "id" | "reference" | "createdAt" | "updatedAt"> & { id?: string }) => Promise<void> }) {
@@ -544,10 +681,33 @@ function RecordEditor({ definition, record, actorName, saving, onClose, onSave }
   const [dueDate, setDueDate] = useState(record?.dueDate ?? "");
   const [payload, setPayload] = useState<Record<string, unknown>>(record?.payload ?? {});
   const [validation, setValidation] = useState("");
+  const [assisting, setAssisting] = useState(false);
+  const [assistantResult, setAssistantResult] = useState<{ title: string; explanation: string; questions: string[]; disclaimer: string } | null>(null);
+  const visibleFields = definition.fields.filter((field) => fieldVisible(field, payload));
+
+  const runAssistant = async () => {
+    setAssisting(true);
+    setValidation("");
+    try {
+      const response = await fetch("/api/assist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ module: definition.key, title, payload }),
+      });
+      const data = await response.json() as { title?: string; explanation?: string; questions?: string[]; patch?: Record<string, unknown>; disclaimer?: string; error?: { message: string } };
+      if (!response.ok || !data.patch) throw new Error(data.error?.message ?? "The local assistant could not process this record.");
+      setPayload((current) => ({ ...current, ...data.patch }));
+      setAssistantResult({ title: data.title ?? "Local assistance", explanation: data.explanation ?? "", questions: data.questions ?? [], disclaimer: data.disclaimer ?? "" });
+    } catch (requestError) {
+      setValidation(requestError instanceof Error ? requestError.message : "The local assistant could not process this record.");
+    } finally {
+      setAssisting(false);
+    }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const missing = definition.fields.find((field) => field.required && (payload[field.key] == null || String(payload[field.key]).trim() === ""));
+    const missing = visibleFields.find((field) => field.required && (payload[field.key] == null || String(payload[field.key]).trim() === ""));
     if (!title.trim() || !owner.trim() || missing) {
       setValidation(missing ? `${missing.label} is required.` : "Title and owner are required.");
       return;
@@ -571,7 +731,11 @@ function RecordEditor({ definition, record, actorName, saving, onClose, onSave }
         <div className="form-row"><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}>{definition.statuses.map((item) => <option key={item}>{item}</option>)}</select></label><label>Priority<select value={priority} onChange={(event) => setPriority(event.target.value as ProductRecord["priority"])}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></label></div>
         <div className="form-row"><label>Owner<input value={owner} onChange={(event) => setOwner(event.target.value)} required /></label><label>Due date<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></label></div>
         {definition.key === "incidents" && <div className="workflow-guidance"><CircleAlert size={17} /><div><strong>RIDDOR decision support</strong><span>Use the current HSE criteria and record the final decision. ProAct does not submit a report for you.</span><a href="https://www.hse.gov.uk/riddor/reportable-incidents.htm" target="_blank" rel="noreferrer">Open official HSE guidance</a></div></div>}
-        <div className="module-form-fields">{definition.fields.map((field) => <DynamicField key={field.key} field={field} value={payload[field.key]} onChange={(value) => setPayload((current) => ({ ...current, [field.key]: value }))} />)}</div>
+        {LOCAL_ASSIST_MODULES.has(definition.key) && <section className="local-assistant">
+          <div className="local-assistant-heading"><Activity size={18} /><div><strong>Local AI simulator</strong><span>Rule-based UK suggestions · no API key · no external data transfer</span></div><button type="button" onClick={() => void runAssistant()} disabled={assisting}>{assisting ? "Analysing…" : assistantResult ? "Run again" : "Assist this record"}</button></div>
+          {assistantResult && <div className="local-assistant-result"><strong>{assistantResult.title}</strong><p>{assistantResult.explanation}</p>{assistantResult.questions.length > 0 && <div><span>Questions to confirm</span><ol>{assistantResult.questions.map((question) => <li key={question}>{question}</li>)}</ol></div>}<small><CircleAlert size={13} />{assistantResult.disclaimer}</small></div>}
+        </section>}
+        <div className="module-form-fields">{visibleFields.map((field, index) => <DynamicField key={field.key} field={field} showGroup={Boolean(field.group && visibleFields[index - 1]?.group !== field.group)} value={payload[field.key]} onChange={(value) => setPayload((current) => ({ ...current, [field.key]: value }))} />)}</div>
         {definition.key === "rams" && <RiskPreview payload={payload} />}
         <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : record ? "Save changes" : "Create record"}<ArrowRight size={15} /></button></div>
       </form>
@@ -579,11 +743,12 @@ function RecordEditor({ definition, record, actorName, saving, onClose, onSave }
   </div>;
 }
 
-function DynamicField({ field, value, onChange }: { field: ModuleDefinition["fields"][number]; value: unknown; onChange: (value: unknown) => void }) {
+function DynamicField({ field, showGroup, value, onChange }: { field: ModuleDefinition["fields"][number]; showGroup: boolean; value: unknown; onChange: (value: unknown) => void }) {
   const textValue = value == null ? "" : String(value);
-  if (field.type === "textarea") return <label>{field.label}{field.required && <em>Required</em>}<textarea rows={3} value={textValue} onChange={(event) => onChange(event.target.value)} required={field.required} /></label>;
-  if (field.type === "select") return <label>{field.label}{field.required && <em>Required</em>}<select value={textValue} onChange={(event) => onChange(event.target.value)} required={field.required}><option value="">Select...</option>{field.options?.map((option) => <option key={option}>{option}</option>)}</select></label>;
-  return <label>{field.label}{field.required && <em>Required</em>}<input type={field.type} value={textValue} min={field.type === "number" ? 0 : undefined} onChange={(event) => onChange(field.type === "number" ? Number(event.target.value) : event.target.value)} required={field.required} /></label>;
+  const heading = showGroup ? <div className="field-group-title"><span>{field.group}</span></div> : null;
+  if (field.type === "textarea") return <Fragment>{heading}<label>{field.label}{field.required && <em>Required</em>}{field.hint && <small>{field.hint}</small>}<textarea rows={3} value={textValue} onChange={(event) => onChange(event.target.value)} required={field.required} /></label></Fragment>;
+  if (field.type === "select") return <Fragment>{heading}<label>{field.label}{field.required && <em>Required</em>}{field.hint && <small>{field.hint}</small>}<select value={textValue} onChange={(event) => onChange(event.target.value)} required={field.required}><option value="">Select...</option>{field.options?.map((option) => <option key={option}>{option}</option>)}</select></label></Fragment>;
+  return <Fragment>{heading}<label>{field.label}{field.required && <em>Required</em>}{field.hint && <small>{field.hint}</small>}<input type={field.type} value={textValue} min={field.type === "number" ? 0 : undefined} onChange={(event) => onChange(field.type === "number" ? Number(event.target.value) : event.target.value)} required={field.required} /></label></Fragment>;
 }
 
 function RiskPreview({ payload }: { payload: Record<string, unknown> }) {
@@ -597,9 +762,9 @@ function RiskPreview({ payload }: { payload: Record<string, unknown> }) {
 function RecordDrawer({ record, definition, attachments, actions, canDeleteEvidence, saving, onClose, onEdit, onDelete, onStatus, onUpload, onDeleteEvidence, onCreateAction, onUpdateAction, onDeleteAction }: { record: ProductRecord; definition: ModuleDefinition; attachments: EvidenceAttachment[]; actions: RecordAction[]; canDeleteEvidence: boolean; saving: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onStatus: (status: string) => void; onUpload: (file: File) => void; onDeleteEvidence: (attachment: EvidenceAttachment) => void; onCreateAction: (input: { description: string; owner: string; dueDate: string | null; priority: ProductRecord["priority"] }) => void; onUpdateAction: (action: RecordAction, status: RecordAction["status"]) => void; onDeleteAction: (action: RecordAction) => void }) {
   return <div className="drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="record-drawer" role="dialog" aria-modal="true" aria-labelledby="record-title">
     <div className="drawer-header"><div><span className="eyebrow">{record.reference}</span><h2 id="record-title">{record.title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close record"><X size={19} /></button></div>
-    <div className="drawer-summary"><PriorityPill priority={record.priority} /><StatusPill status={record.status} /><span>Updated {formatDate(record.updatedAt)}</span></div>
+    <div className="drawer-summary"><PriorityPill priority={record.priority} /><StatusPill status={record.status} />{record.payload.simulatedData === true && <em className="simulated-badge">Simulated data</em>}<span>Updated {formatDate(record.updatedAt)}</span></div>
     <div className="drawer-actions"><button className="secondary-button" onClick={onEdit}><Pencil size={15} /> Edit</button><label>Move to<select aria-label="Change record status" value={record.status} onChange={(event) => onStatus(event.target.value)} disabled={saving}>{definition.statuses.map((status) => <option key={status}>{status}</option>)}</select></label></div>
-    <dl className="record-details"><div><dt>Owner</dt><dd>{record.owner}</dd></div><div><dt>Due date</dt><dd>{formatDate(record.dueDate)}</dd></div>{definition.fields.map((field) => <div key={field.key}><dt>{field.label}</dt><dd>{field.key === "sourceUrl" && typeof record.payload[field.key] === "string" && record.payload[field.key] ? <a href={String(record.payload[field.key])} target="_blank" rel="noreferrer">Open official source</a> : pretty(record.payload[field.key])}</dd></div>)}</dl>
+    <dl className="record-details"><div><dt>Owner</dt><dd>{record.owner}</dd></div><div><dt>Due date</dt><dd>{formatDate(record.dueDate)}</dd></div>{definition.fields.filter((field) => fieldVisible(field, record.payload)).map((field) => <div key={field.key}><dt>{field.label}</dt><dd>{field.key === "sourceUrl" && safeExternalUrl(record.payload[field.key]) ? <a href={safeExternalUrl(record.payload[field.key])} target="_blank" rel="noreferrer">Open official source</a> : pretty(record.payload[field.key])}</dd></div>)}</dl>
     <section className="evidence-section"><div className="evidence-heading"><div><strong>Evidence files</strong><span>PDF, JPG, PNG, WebP, TXT or CSV · maximum 2 MB</span></div><label className={`secondary-button ${saving ? "disabled" : ""}`}><Plus size={14} /> Attach<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.csv" disabled={saving} onChange={(event) => { const file = event.target.files?.[0]; if (file) onUpload(file); event.currentTarget.value = ""; }} /></label></div>{attachments.length ? <div className="evidence-list">{attachments.map((attachment) => <article key={attachment.id}><FileClock size={17} /><div><a href={`/api/state?attachment=${encodeURIComponent(attachment.id)}`}>{attachment.file_name}</a><span>{attachment.mime_type} · {Math.ceil(attachment.size_bytes / 1024)} KB</span></div>{canDeleteEvidence && <button onClick={() => onDeleteEvidence(attachment)} disabled={saving} aria-label={`Delete ${attachment.file_name}`}><Trash2 size={14} /></button>}</article>)}</div> : <p className="evidence-empty">No evidence attached yet.</p>}</section>
     <ActionPanel record={record} actions={actions} saving={saving} canDelete={canDeleteEvidence} onCreate={onCreateAction} onUpdate={onUpdateAction} onDelete={onDeleteAction} />
     <div className="drawer-proof"><ShieldCheck size={17} /><span>Changes to this record are tenant-scoped and appended to the immutable audit log.</span></div>

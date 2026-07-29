@@ -31,18 +31,18 @@ This document is the implementation ledger for the product blueprint. Status val
 
 | Module | UI | Persistence | Workflow | RBAC | Audit | Export | Automated tests | Overall |
 |---|---|---|---|---|---|---|---|---|
-| Dashboard & Analytics | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
-| Risk Management & RAMS | Implemented | Implemented | Risk scoring and approval gates | Implemented | Implemented | CSV | Partial | In progress |
-| Incident Management | Implemented | Implemented | Investigation, actions and closure gates | Implemented | Implemented | CSV | Partial | In progress |
-| Inspection Management | Implemented | Implemented | Findings, actions and completion gate | Implemented | Implemented | CSV | Partial | In progress |
-| Training Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Dashboard & Analytics | Strategy KPI workspace | Implemented | Live RIDDOR/DAFW/leading indicators, alerts and action workload | Implemented | Implemented | CSV / backup | Partial | In progress |
+| Risk Management & RAMS | Conditional MEEPS/COSHH/RTW with local drafting assistance | Implemented | Risk scoring, version, briefing and approval gates | Implemented | Implemented | CSV | Partial | In progress |
+| Incident Management | Lifecycle-specific form with local investigation prompts | Implemented | Investigation, RCA, RIDDOR, actions, closure and lesson bridge | Implemented | Implemented | CSV | Partial | In progress |
+| Inspection Management | Scheduling/check execution | Implemented | Findings, RAG, actions and completion gate | Implemented | Implemented | CSV | Partial | In progress |
+| Training Management | Matrix/course/certificate/verification with local matrix suggestions | Implemented | Assessment, expiry bands and verification gates | Implemented | Implemented | CSV | Partial | In progress |
 | Legal Compliance Library | Implemented | Implemented | UK starter register | Implemented | Implemented | CSV | Partial | In progress |
-| Management System / ISO | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
-| Work Instructions & Documents | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
-| Emergency Response | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
-| Client / Contractor Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
-| Change Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
-| Community & Knowledge | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Management System / ISO | Conditional gap/NCR/PTW/SWOT/policy with local gap suggestions | Implemented | Scores/RAG, evidence and close-out gates | Implemented | Implemented | CSV | Partial | In progress |
+| Work Instructions & Documents | Controlled-document form | Implemented | Version/revision/reviewer/publication gates | Implemented | Implemented | CSV | Partial | In progress |
+| Emergency Response | Conditional drill/muster/role/contact | Implemented | Headcount/duration and all-clear gate | Implemented | Implemented | CSV | Partial | In progress |
+| Client / Contractor Management | Onboarding/RAMS/PTW controls | Implemented | Approval readiness and gate | Implemented | Implemented | CSV | Partial | In progress |
+| Change Management | Structured lifecycle form | Implemented | Assessment, approval, implementation and verification gates | Implemented | Implemented | CSV | Partial | In progress |
+| Community & Knowledge | Dedicated feed and lesson library | Implemented | Incident lesson bridge, reactions and comments | Implemented | Implemented | CSV | Partial | In progress |
 | Consultant Marketplace | Dedicated profiles, discovery, community and engagements | Implemented (typed JSON records) | Profiles, filters, posts, comments, test escrow, disputes and two-way ratings | Implemented | Implemented | CSV / backup | Partial | In progress — external OAuth and regulated payments remain |
 
 ## Release gates

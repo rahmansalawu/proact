@@ -10,6 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test:local": "node tests/local-module-matrix.mjs",
     "lint": "tsc --noEmit",
     "db:generate": "drizzle-kit generate"
   },

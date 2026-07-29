@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { isModuleKey, MODULE_MAP, WRITABLE_ROLES } from "../../lib/modules";
+import { buildSimulationData } from "../../lib/simulation-data";
 import { UK_LEGAL_STARTERS } from "../../lib/uk-legal";
 
 export const dynamic = "force-dynamic";
@@ -27,40 +28,52 @@ function workflowIssues(input: WorkflowInput) {
     for (const key of ["likelihood", "consequence", "residualLikelihood", "residualConsequence"]) {
       if (hasValue(p, key) && (Number(p[key]) < 1 || Number(p[key]) > 5)) issues.push({ key, message: "Risk values must be from 1 to 5." });
     }
-    if (input.status === "Approved") requireFields(["residualLikelihood", "residualConsequence", "approvedBy", "reviewDate"], "Approved RAMS require residual risk, a competent approver and review date.");
+    if (input.status === "Approved") requireFields(["version", "residualLikelihood", "residualConsequence", "approvedBy", "reviewDate", "workforceAcknowledgement"], "Approved RAMS require a controlled version, residual risk, competent approval, review date and workforce briefing.");
   }
   if (input.module === "incidents" && input.status === "Closed") {
-    requireFields(["rootCause", "investigationSummary", "correctiveActions"], "Closed incidents require a root cause, investigation conclusion and corrective actions.");
+    requireFields(["rootCause", "investigationSummary", "correctiveActions", "lessonLearnt"], "Closed incidents require root cause analysis, an investigation conclusion, corrective actions and a lesson learnt.");
     if (p.riddor === "Not assessed" || !hasValue(p, "riddor")) issues.push({ key: "riddor", message: "A final RIDDOR assessment is required before closure." });
     if (p.riddor === "Reportable" && !hasValue(p, "riddorReference")) issues.push({ key: "riddorReference", message: "Record the RIDDOR submission reference before closure." });
   }
+  if (input.module === "incidents" && hasValue(p, "daysAwayFromWork") && Number(p.daysAwayFromWork) < 0) issues.push({ key: "daysAwayFromWork", message: "Days away from work cannot be negative." });
   if (input.module === "inspections" && input.status === "Completed") {
-    requireFields(["findings", "score"], "Completed inspections require findings and a compliance score.");
+    requireFields(["findings", "score", "completedAt"], "Completed inspections require findings, a compliance score and completion date.");
     if (hasValue(p, "score") && (Number(p.score) < 0 || Number(p.score) > 100)) issues.push({ key: "score", message: "Compliance score must be from 0 to 100." });
+    if (Number(p.score) < 100 && !hasValue(p, "correctiveActions")) issues.push({ key: "correctiveActions", message: "Any inspection below 100% requires corrective actions or close-out evidence." });
   }
-  if (input.module === "training" && ["Completed", "Verified"].includes(input.status)) {
+  if (input.module === "training" && ["Certificate Record", "Competence Verification"].includes(String(p.trainingType)) && ["Completed", "Verified"].includes(input.status)) {
     requireFields(["issueDate", "verification"], "Completed training requires an issue date and competence evidence.");
+  }
+  if (input.module === "training" && input.status === "Verified") requireFields(["verifiedBy"], "Verified competence requires a named manager or verifier.");
+  if (input.module === "training") {
+    for (const key of ["passingGrade", "assessmentScore"]) {
+      if (hasValue(p, key) && (Number(p[key]) < 0 || Number(p[key]) > 100)) issues.push({ key, message: "Training percentages must be from 0 to 100." });
+    }
   }
   if (input.module === "legal" && input.status === "Compliant") {
     requireFields(["evidence", "reviewDate"], "A compliant legal entry requires evidence and a next review date.");
   }
+  if (input.module === "iso" && hasValue(p, "score") && (Number(p.score) < 0 || Number(p.score) > 100)) issues.push({ key: "score", message: "ISO clause scores must be from 0 to 100." });
   if (input.module === "iso" && ["Conforming", "Closed"].includes(input.status)) {
     requireFields(["evidence"], "Conforming or closed assurance records require close-out evidence.");
   }
+  if (input.module === "iso" && p.framework === "Permit to Work" && input.status === "Closed") requireFields(["permitType", "permitLocation", "validUntil", "evidence"], "A closed permit requires type, location, validity and close-out evidence.");
   if (input.module === "documents" && ["Approved", "Published"].includes(input.status)) {
-    requireFields(["reviewer", "reviewDate"], "Approved documents require an approver and review date.");
+    requireFields(["version", "revisionSummary", "reviewer", "reviewDate"], "Approved documents require version history, an approver and review date.");
   }
-  if (input.module === "emergency" && ["All clear", "Closed"].includes(input.status)) {
-    requireFields(["accountedFor", "observations"], "Emergency close-out requires a headcount and observations.");
-    if (Number(p.accountedFor) !== Number(p.expected)) issues.push({ key: "accountedFor", message: "All expected people must be accounted for before all-clear or closure." });
+  if (input.module === "documents" && input.status === "Published") requireFields(["effectiveDate"], "Published documents require an effective date.");
+  if (input.module === "emergency" && p.responseType === "Evacuation / Drill" && ["All clear", "Closed"].includes(input.status)) {
+    requireFields(["accountedFor", "allClearAt", "observations"], "Emergency close-out requires headcount, all-clear time and observations.");
+    if (Number(p.accountedFor) + Number(p.exempt || 0) !== Number(p.expected)) issues.push({ key: "accountedFor", message: "Accounted-for plus exempt people must equal the expected headcount before all-clear or closure." });
   }
   if (input.module === "contractors" && input.status === "Approved") {
     if (p.orientation !== "Completed" || p.ramsStatus !== "Approved" || p.permitStatus === "Required") {
       issues.push({ key: "orientation", message: "Approval requires completed orientation, approved RAMS and no unissued required permit." });
     }
+    requireFields(["competenceEvidence", "orientationResult"], "Approved contractors require competence evidence and orientation acknowledgement.");
   }
   if (input.module === "change" && input.status === "Approved") requireFields(["approver"], "Approved changes require an approver.");
-  if (input.module === "change" && input.status === "Verified") requireFields(["approver", "verification"], "Verified changes require an approver and post-implementation verification.");
+  if (input.module === "change" && input.status === "Verified") requireFields(["approver", "implementationDate", "verification"], "Verified changes require an approver, implementation date and post-implementation verification.");
   if (input.module === "marketplace" && input.status === "Completed" && p.marketplaceType === "engagement") requireFields(["milestone", "completionEvidence", "rating"], "Completed engagements require milestone evidence and a client rating.");
   return issues;
 }
@@ -75,6 +88,28 @@ function derivePayload(module: string, payload: Record<string, unknown>) {
     next.residualRiskScore = residual;
     next.residualRiskRating = residual >= 17 ? "Very high" : residual >= 10 ? "High" : residual >= 5 ? "Medium" : residual > 0 ? "Low" : "Not calculated";
   }
+  if (module === "incidents") {
+    next.riddorReportable = payload.riddor === "Reportable";
+    next.dafw = Math.max(0, Number(payload.daysAwayFromWork || 0));
+  }
+  if (module === "inspections" && Number.isFinite(Number(payload.score))) {
+    const score = Number(payload.score);
+    next.complianceRag = score >= 90 ? "Green" : score >= 70 ? "Amber" : "Red";
+  }
+  if (module === "training" && hasValue(payload, "expiryDate")) {
+    const daysToExpiry = Math.ceil((new Date(String(payload.expiryDate)).getTime() - Date.now()) / 86_400_000);
+    next.daysToExpiry = daysToExpiry;
+    next.expiryBand = daysToExpiry < 0 ? "Expired" : daysToExpiry <= 7 ? "7 days" : daysToExpiry <= 14 ? "14 days" : daysToExpiry <= 30 ? "30 days" : "Current";
+  }
+  if (module === "iso" && hasValue(payload, "score")) {
+    const score = Number(payload.score);
+    next.complianceRag = score >= 85 ? "Green" : score >= 60 ? "Amber" : "Red";
+  }
+  if (module === "emergency" && ["Evacuation / Drill", "Muster Register"].includes(String(payload.responseType))) {
+    next.unaccounted = Math.max(0, Number(payload.expected || 0) - Number(payload.accountedFor || 0) - Number(payload.exempt || 0));
+    if (hasValue(payload, "startedAt") && hasValue(payload, "allClearAt")) next.evacuationMinutes = Math.max(0, Math.round((new Date(String(payload.allClearAt)).getTime() - new Date(String(payload.startedAt)).getTime()) / 60_000));
+  }
+  if (module === "contractors") next.approvalReady = payload.orientation === "Completed" && payload.ramsStatus === "Approved" && ["Not required", "Issued", "Closed"].includes(String(payload.permitStatus));
   return next;
 }
 
@@ -620,6 +655,75 @@ export async function POST(request: Request) {
         inserted += 1;
       }
       return response({ inserted }, inserted ? 201 : 200);
+    }
+    if (z.object({ action: z.literal("seed_simulation") }).safeParse(body).success) {
+      if (!["SuperAdmin", "CompanyAdmin"].includes(actor.role)) return response({ error: { code: "FORBIDDEN", message: "Only an administrator can load simulated workspace data." } }, 403);
+      const database = db();
+      const now = new Date();
+      const simulation = buildSimulationData(now);
+      const simulationRecords = new Map<string, { id: string; reference: string }>();
+      let recordsInserted = 0;
+      let recordsExisting = 0;
+      let actionsInserted = 0;
+
+      for (const seed of simulation.records) {
+        const existing = await database.prepare(
+          "SELECT id, reference FROM module_records WHERE organisation_id = ? AND payload LIKE ? LIMIT 1",
+        ).bind(actor.organisationId, `%"simulationId":"${seed.simulationId}"%`).first<{ id: string; reference: string }>();
+        if (existing) {
+          simulationRecords.set(seed.simulationId, existing);
+          recordsExisting += 1;
+          continue;
+        }
+        const validated = recordInput.parse({
+          module: seed.module,
+          title: seed.title,
+          status: seed.status,
+          priority: seed.priority,
+          owner: seed.owner,
+          dueDate: seed.dueDate,
+          payload: seed.payload,
+        });
+        const moduleCount = await database.prepare(
+          "SELECT COUNT(*) AS total FROM module_records WHERE organisation_id = ? AND module = ?",
+        ).bind(actor.organisationId, validated.module).first<{ total: number }>();
+        const reference = `${MODULE_MAP[validated.module].referencePrefix}-${String((moduleCount?.total ?? 0) + 1).padStart(4, "0")}`;
+        const id = crypto.randomUUID();
+        const timestamp = now.toISOString();
+        const enrichedPayload = derivePayload(validated.module, validated.payload);
+        await database.prepare(
+          "INSERT INTO module_records (id, organisation_id, module, reference, title, status, priority, owner, due_date, payload, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ).bind(id, actor.organisationId, validated.module, reference, validated.title, validated.status, validated.priority, validated.owner, validated.dueDate ?? null, JSON.stringify(enrichedPayload), actor.id, timestamp, timestamp).run();
+        const created = await database.prepare("SELECT * FROM module_records WHERE id = ?").bind(id).first<DbRecord>();
+        await writeAudit(request, actor, "CREATE", id, null, { ...created, simulation: true });
+        simulationRecords.set(seed.simulationId, { id, reference });
+        recordsInserted += 1;
+      }
+
+      for (const seed of simulation.actions) {
+        const parent = simulationRecords.get(seed.recordSimulationId);
+        if (!parent) continue;
+        const existing = await database.prepare(
+          "SELECT id FROM record_actions WHERE organisation_id = ? AND record_id = ? AND description = ? LIMIT 1",
+        ).bind(actor.organisationId, parent.id, seed.description).first<{ id: string }>();
+        if (existing) continue;
+        const id = crypto.randomUUID();
+        const timestamp = now.toISOString();
+        await database.prepare(
+          "INSERT INTO record_actions (id, organisation_id, record_id, description, owner, due_date, status, priority, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ).bind(id, actor.organisationId, parent.id, seed.description, seed.owner, seed.dueDate, seed.status, seed.priority, actor.id, timestamp, timestamp).run();
+        const created = await database.prepare(
+          "SELECT id, record_id, description, owner, due_date, status, priority, created_by, created_at, updated_at FROM record_actions WHERE id = ?",
+        ).bind(id).first();
+        await writeAudit(request, actor, "CREATE", id, null, { ...created, record_reference: parent.reference, simulation: true }, "record_action");
+        actionsInserted += 1;
+      }
+      return response({
+        recordsInserted,
+        recordsExisting,
+        actionsInserted,
+        modulesPopulated: new Set(simulation.records.map((item) => item.module)).size,
+      }, recordsInserted || actionsInserted ? 201 : 200);
     }
     const input = recordInput.parse(body);
     const database = db();

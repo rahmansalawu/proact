@@ -50,7 +50,7 @@ test("enforces UK legal and module-specific workflow controls", async () => {
   ]);
   assert.match(route, /hasTrustedOrigin/);
   assert.match(route, /first user|userCount/);
-  assert.match(route, /Closed incidents require a root cause/);
+  assert.match(route, /Closed incidents require root cause analysis/);
   assert.match(route, /derivePayload/);
   assert.match(route, /ALLOWED_EVIDENCE_TYPES/);
   assert.match(route, /MAX_EVIDENCE_BYTES/);
@@ -86,4 +86,57 @@ test("implements the dedicated consultant marketplace workflows", async () => {
   assert.match(marketplace, /Topic thread/);
   assert.match(route, /p\.marketplaceType === "engagement"/);
   assert.match(modules, /"Profile active"/);
+});
+
+test("maps the strategy workflows into integrated local modules", async () => {
+  const [page, modules, route, community, review] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/modules.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/state/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/community-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../docs/STRATEGY_MODULE_REVIEW.md", import.meta.url), "utf8"),
+  ]);
+  for (const workflow of ["COSHH Assessment", "Return-to-Work Plan", "Guided 5 Whys", "Training Matrix Requirement", "Permit to Work", "Muster Register"]) assert.match(modules, new RegExp(workflow));
+  for (const derived of ["riddorReportable", "complianceRag", "expiryBand", "evacuationMinutes", "approvalReady"]) assert.match(route, new RegExp(derived));
+  assert.match(page, /RIDDOR YTD/);
+  assert.match(page, /CONNECTED CONTROLS/);
+  assert.match(community, /Incident lessons awaiting publication/);
+  assert.match(community, /reactions/);
+  assert.match(review, /Cross-unit acceptance paths/);
+});
+
+test("provides an idempotent, visibly labelled operational simulation pack", async () => {
+  const [simulation, route, page] = await Promise.all([
+    readFile(new URL("../app/lib/simulation-data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/state/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+  ]);
+  for (const module of ["rams", "incidents", "inspections", "training", "legal", "iso", "documents", "emergency", "contractors", "change", "community", "marketplace"]) assert.match(simulation, new RegExp(`"${module}"`));
+  assert.match(simulation, /simulatedData: true/);
+  assert.match(simulation, /Fractured wrist following loading-bay fall/);
+  assert.match(simulation, /Held in test escrow/);
+  assert.match(route, /seed_simulation/);
+  assert.match(route, /payload LIKE/);
+  assert.match(route, /Only an administrator can load simulated workspace data/);
+  assert.match(page, /Operational simulation active/);
+  assert.match(page, /simulated-badge/);
+});
+
+test("provides bounded local assistance without external AI data transfer", async () => {
+  const [assistant, route, page, modules] = await Promise.all([
+    readFile(new URL("../app/lib/local-ai.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/assist/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/modules.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(assistant, /local-simulation/);
+  assert.match(assistant, /Work at Height Regulations 2005/);
+  assert.match(assistant, /competent UK HSE professional/);
+  assert.match(route, /Cross-origin assistant requests/);
+  assert.match(route, /no-store/);
+  assert.match(page, /Local AI simulator/);
+  assert.match(page, /no external data transfer/);
+  assert.match(modules, /investigationPrompts/);
+  assert.match(modules, /recommendedMatrix/);
+  assert.match(modules, /assistantRationale/);
 });

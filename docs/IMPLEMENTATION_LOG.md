@@ -56,6 +56,17 @@ Implemented:
 - Added a derived visible trust score based on ratings, verification state and review volume.
 - Added an explicitly labelled test-escrow state machine that does not move or custody money.
 - Isolated marketplace server validation by record type so published posts and active profiles cannot be subjected to engagement completion gates.
+- Re-reviewed the product against the complete strategy/master build document under the UK-only, local-persistence and no-external-integration constraints.
+- Added strategy-specific workflow launchpads and connected-control navigation for every operational module.
+- Expanded RAMS into conditional MEEPS, COSHH and return-to-work workflows with controlled version and briefing evidence.
+- Expanded incident investigation with severity, DAFW, witnesses, supervisor statement, linked RAMS, fishbone factors and controlled lesson learnt.
+- Expanded inspection scheduling/checklist execution, training matrix/course/certificate/competence fields, ISO gap/NCR/PTW/SWOT/policy workflows and controlled-document revision metadata.
+- Expanded Emergency into conditional drill, muster, role and contact workflows; expanded Contractor and Change approval evidence.
+- Added server-derived RIDDOR/DAFW, inspection/ISO RAG, training-expiry, emergency headcount/duration and contractor-readiness values.
+- Strengthened server completion gates across RAMS, incidents, inspections, training, documents, emergency, contractor and change workflows.
+- Added dashboard RIDDOR YTD, DAFW, near-miss, inspection and 30-day training indicators plus priority safety alerts.
+- Replaced the generic Community screen with a dedicated feed, reactions/comments, toolbox library and incident-to-lesson publication bridge.
+- Added a module-by-module strategy acceptance review and documented external production blockers.
 - Replaced the obsolete starter test suite.
 - Upgraded the framework, React server runtime, Vite and Cloudflare tooling to patched releases.
 - Pinned patched transitive PostCSS, Sharp, esbuild and brace-expansion releases.
@@ -84,13 +95,27 @@ Verified:
 - An open corrective action blocked incident closure with HTTP 400; Open to In progress to Closed then allowed record closure.
 - Partial status updates preserved the complete incident investigation payload.
 - Full backup returned HTTP 200 with schema version, UK jurisdiction, every data section and 43 retained audit events.
+- Strategy regression build and five automated source/contract tests passed.
+- A local integration matrix created, read and removed one controlled record in each of the 12 operational modules.
+- Derived RAMS residual risk, incident RIDDOR/DAFW, inspection and ISO RAG, training expiry, emergency headcount/duration and contractor readiness values were verified.
+- Invalid ISO scoring and an unreconciled emergency all-clear were rejected with HTTP 400; a cross-origin mutation remained rejected with HTTP 403.
+- Dashboard KPI rendering, conditional MEEPS fields, dedicated Community workspace and Marketplace regression were verified in the browser with no console errors.
+- The responsive local build had no horizontal overflow at the strategy-required 375 px viewport.
+- Added an administrator-only, idempotent operational simulation loader.
+- Loaded 46 visibly labelled simulated records across all 12 operational modules without modifying existing workspace records.
+- Added 10 simulated corrective actions covering overdue, open, in-progress and closed states.
+- Verified a second simulation load created zero duplicates and retained the same 46 simulated records.
+- Added a clearly labelled local AI simulator for RAMS, incident investigation, ISO gap analysis and training-matrix recommendations.
+- Kept local assistance deterministic and in-process: it requires no API key and sends no record data to an external AI provider.
+- Made suggested fields editable and displayed follow-up questions, rationale and a competent-person review warning.
+- Added same-origin enforcement, bounded request validation, no-store responses and regression coverage for the local assistance endpoint.
 
 Still required for module completeness:
 
 - Module-specific relational data models beyond the shared controlled-record foundation.
 - Hosted object storage, malware scanning and certificate OCR (local SQLite evidence storage is implemented).
 - Incident witness management and regulatory submission integration (assignable corrective actions are implemented).
-- RAMS electronic signatures, revision history, workforce acknowledgements and PDF generation.
+- Real generative AI drafting remains externally blocked; the current RAMS assistant is a transparent local rule-based simulator. Electronic signatures, revision history, workforce acknowledgements and PDF generation also remain.
 - Inspection checklist execution and photo findings.
 - Training course/test engine, certificate OCR and expiry jobs.
 - Broader UK legal content, applicability review and change monitoring.
