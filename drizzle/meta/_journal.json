@@ -15,6 +15,13 @@
       "when": 1785282821972,
       "tag": "0001_abnormal_forgotten_one",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785283037000,
+      "tag": "0002_loose_weapon_omega",
+      "breakpoints": true
     }
   ]
 }

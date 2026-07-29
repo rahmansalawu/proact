@@ -87,6 +87,7 @@ const ALLOWED_EVIDENCE_TYPES = new Set([
   "text/csv",
 ]);
 const MAX_EVIDENCE_BYTES = 2 * 1024 * 1024;
+const ACTION_GATE_STATUSES = new Set(["Approved", "Closed", "Completed", "Verified", "Conforming", "Published", "All clear", "Compliant"]);
 
 const evidenceInput = z.object({
   action: z.literal("upload_evidence"),
@@ -95,6 +96,24 @@ const evidenceInput = z.object({
   mimeType: z.string().refine((value) => ALLOWED_EVIDENCE_TYPES.has(value), "Only PDF, JPG, PNG, WebP, TXT and CSV evidence is supported."),
   sizeBytes: z.number().int().positive().max(MAX_EVIDENCE_BYTES),
   contentBase64: z.string().min(4).max(Math.ceil(MAX_EVIDENCE_BYTES * 4 / 3) + 8),
+});
+
+const actionInput = z.object({
+  action: z.literal("create_action"),
+  recordId: z.string().uuid(),
+  description: z.string().trim().min(3).max(500),
+  owner: z.string().trim().min(2).max(120),
+  dueDate: z.string().nullable().optional(),
+  priority: z.enum(["Low", "Medium", "High", "Critical"]).default("Medium"),
+});
+
+const actionUpdateInput = z.object({
+  actionId: z.string().uuid(),
+  description: z.string().trim().min(3).max(500).optional(),
+  owner: z.string().trim().min(2).max(120).optional(),
+  dueDate: z.string().nullable().optional(),
+  priority: z.enum(["Low", "Medium", "High", "Critical"]).optional(),
+  status: z.enum(["Open", "In progress", "Closed"]).optional(),
 });
 
 function safeFileName(value: string) {
@@ -129,8 +148,15 @@ const recordInput = recordBase.superRefine((input, context) => {
   }
 });
 
-const updateInput = recordBase.partial().extend({
+const updateInput = z.object({
   id: z.string().uuid(),
+  module: z.string().refine(isModuleKey, "Unknown module").optional(),
+  title: z.string().trim().min(3).max(180).optional(),
+  status: z.string().trim().min(2).max(60).optional(),
+  priority: z.enum(["Low", "Medium", "High", "Critical"]).optional(),
+  owner: z.string().trim().min(2).max(120).optional(),
+  dueDate: z.string().nullable().optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
 });
 
 type Actor = {
@@ -209,6 +235,21 @@ const schemaStatements = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS record_attachments_record_idx ON record_attachments(organisation_id, record_id)`,
+  `CREATE TABLE IF NOT EXISTS record_actions (
+    id TEXT PRIMARY KEY,
+    organisation_id TEXT NOT NULL REFERENCES organisations(id),
+    record_id TEXT NOT NULL REFERENCES module_records(id),
+    description TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    due_date TEXT,
+    status TEXT NOT NULL DEFAULT 'Open',
+    priority TEXT NOT NULL DEFAULT 'Medium',
+    created_by TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS record_actions_record_idx ON record_actions(organisation_id, record_id)`,
+  `CREATE INDEX IF NOT EXISTS record_actions_due_idx ON record_actions(organisation_id, status, due_date)`,
   `CREATE TABLE IF NOT EXISTS feature_entitlements (
     id TEXT PRIMARY KEY,
     tier TEXT NOT NULL,
@@ -434,6 +475,9 @@ export async function GET(request: Request) {
     const attachments = (await db().prepare(
       "SELECT id, record_id, file_name, mime_type, size_bytes, uploaded_by, created_at FROM record_attachments WHERE organisation_id = ? ORDER BY created_at DESC",
     ).bind(actor.organisationId).all()).results;
+    const actions = (await db().prepare(
+      "SELECT id, record_id, description, owner, due_date, status, priority, created_by, created_at, updated_at FROM record_actions WHERE organisation_id = ? ORDER BY updated_at DESC",
+    ).bind(actor.organisationId).all()).results;
 
     return response({
       organisation,
@@ -441,6 +485,7 @@ export async function GET(request: Request) {
       records: recordsResult.results.map(parseRecord),
       audit: audits,
       attachments,
+      actions,
     });
   } catch (error) {
     return errorResponse(error);
@@ -482,6 +527,24 @@ export async function POST(request: Request) {
       ).bind(id, actor.organisationId, record.id, metadata.file_name, metadata.mime_type, metadata.size_bytes, evidence.data.contentBase64, actor.id, now).run();
       await writeAudit(request, actor, "UPLOAD", id, null, { ...metadata, record_reference: record.reference }, "record_attachment");
       return response({ attachment: metadata }, 201);
+    }
+    const newAction = actionInput.safeParse(body);
+    if (newAction.success) {
+      const database = db();
+      const record = await database.prepare(
+        "SELECT id, reference FROM module_records WHERE id = ? AND organisation_id = ? LIMIT 1",
+      ).bind(newAction.data.recordId, actor.organisationId).first<{ id: string; reference: string }>();
+      if (!record) return response({ error: { code: "NOT_FOUND", message: "The action record was not found." } }, 404);
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      await database.prepare(
+        "INSERT INTO record_actions (id, organisation_id, record_id, description, owner, due_date, status, priority, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?)",
+      ).bind(id, actor.organisationId, record.id, newAction.data.description, newAction.data.owner, newAction.data.dueDate ?? null, newAction.data.priority, actor.id, now, now).run();
+      const created = await database.prepare(
+        "SELECT id, record_id, description, owner, due_date, status, priority, created_by, created_at, updated_at FROM record_actions WHERE id = ?",
+      ).bind(id).first();
+      await writeAudit(request, actor, "CREATE", id, null, { ...created, record_reference: record.reference }, "record_action");
+      return response({ action: created }, 201);
     }
     if (z.object({ action: z.literal("seed_uk_legal") }).safeParse(body).success) {
       const database = db();
@@ -542,7 +605,33 @@ export async function PATCH(request: Request) {
     const actor = await getActor(request);
     if (!actor) return response({ error: { code: "UNAUTHENTICATED", message: "Sign in is required." } }, 401);
     if (!canWrite(actor.role)) return response({ error: { code: "FORBIDDEN", message: "Your role cannot update records." } }, 403);
-    const input = updateInput.parse(await request.json());
+    const body = await request.json();
+    const actionUpdate = actionUpdateInput.safeParse(body);
+    if (actionUpdate.success) {
+      const existingAction = await db().prepare(
+        "SELECT * FROM record_actions WHERE id = ? AND organisation_id = ? LIMIT 1",
+      ).bind(actionUpdate.data.actionId, actor.organisationId).first<{
+        id: string; description: string; owner: string; due_date: string | null; status: string; priority: string;
+      }>();
+      if (!existingAction) return response({ error: { code: "NOT_FOUND", message: "Action not found." } }, 404);
+      const nextAction = {
+        description: actionUpdate.data.description ?? existingAction.description,
+        owner: actionUpdate.data.owner ?? existingAction.owner,
+        dueDate: actionUpdate.data.dueDate === undefined ? existingAction.due_date : actionUpdate.data.dueDate,
+        status: actionUpdate.data.status ?? existingAction.status,
+        priority: actionUpdate.data.priority ?? existingAction.priority,
+      };
+      const now = new Date().toISOString();
+      await db().prepare(
+        "UPDATE record_actions SET description = ?, owner = ?, due_date = ?, status = ?, priority = ?, updated_at = ? WHERE id = ? AND organisation_id = ?",
+      ).bind(nextAction.description, nextAction.owner, nextAction.dueDate, nextAction.status, nextAction.priority, now, existingAction.id, actor.organisationId).run();
+      const updatedAction = await db().prepare(
+        "SELECT id, record_id, description, owner, due_date, status, priority, created_by, created_at, updated_at FROM record_actions WHERE id = ?",
+      ).bind(existingAction.id).first();
+      await writeAudit(request, actor, "UPDATE", existingAction.id, existingAction, updatedAction, "record_action");
+      return response({ action: updatedAction });
+    }
+    const input = updateInput.parse(body);
     const existing = await db().prepare(
       "SELECT * FROM module_records WHERE id = ? AND organisation_id = ? LIMIT 1",
     ).bind(input.id, actor.organisationId).first<DbRecord>();
@@ -558,6 +647,14 @@ export async function PATCH(request: Request) {
       dueDate: input.dueDate === undefined ? current.dueDate : input.dueDate,
       payload: input.payload ?? current.payload,
     };
+    if (ACTION_GATE_STATUSES.has(next.status)) {
+      const openActions = await db().prepare(
+        "SELECT COUNT(*) AS total FROM record_actions WHERE record_id = ? AND organisation_id = ? AND status != 'Closed'",
+      ).bind(input.id, actor.organisationId).first<{ total: number }>();
+      if ((openActions?.total ?? 0) > 0) {
+        return response({ error: { code: "OPEN_ACTIONS", message: "Close all corrective actions before moving this record to its controlled completion status." } }, 400);
+      }
+    }
     const validatedNext = recordInput.parse(next);
     const enrichedPayload = derivePayload(validatedNext.module, validatedNext.payload);
     const now = new Date().toISOString();
@@ -589,6 +686,16 @@ export async function DELETE(request: Request) {
       await writeAudit(request, actor, "DELETE", attachmentDelete.data.attachmentId, attachment, null, "record_attachment");
       return response({ success: true });
     }
+    const actionDelete = z.object({ actionId: z.string().uuid() }).safeParse(body);
+    if (actionDelete.success) {
+      const existingAction = await db().prepare(
+        "SELECT * FROM record_actions WHERE id = ? AND organisation_id = ? LIMIT 1",
+      ).bind(actionDelete.data.actionId, actor.organisationId).first();
+      if (!existingAction) return response({ error: { code: "NOT_FOUND", message: "Action not found." } }, 404);
+      await db().prepare("DELETE FROM record_actions WHERE id = ? AND organisation_id = ?").bind(actionDelete.data.actionId, actor.organisationId).run();
+      await writeAudit(request, actor, "DELETE", actionDelete.data.actionId, existingAction, null, "record_action");
+      return response({ success: true });
+    }
     const { id } = z.object({ id: z.string().uuid() }).parse(body);
     const existing = await db().prepare(
       "SELECT * FROM module_records WHERE id = ? AND organisation_id = ? LIMIT 1",
@@ -597,9 +704,13 @@ export async function DELETE(request: Request) {
     const attachments = (await db().prepare(
       "SELECT id, file_name, mime_type, size_bytes FROM record_attachments WHERE record_id = ? AND organisation_id = ?",
     ).bind(id, actor.organisationId).all()).results;
+    const actions = (await db().prepare(
+      "SELECT id, description, owner, due_date, status, priority FROM record_actions WHERE record_id = ? AND organisation_id = ?",
+    ).bind(id, actor.organisationId).all()).results;
+    await db().prepare("DELETE FROM record_actions WHERE record_id = ? AND organisation_id = ?").bind(id, actor.organisationId).run();
     await db().prepare("DELETE FROM record_attachments WHERE record_id = ? AND organisation_id = ?").bind(id, actor.organisationId).run();
     await db().prepare("DELETE FROM module_records WHERE id = ? AND organisation_id = ?").bind(id, actor.organisationId).run();
-    await writeAudit(request, actor, "DELETE", id, { ...existing, attachments }, null);
+    await writeAudit(request, actor, "DELETE", id, { ...existing, attachments, actions }, null);
     return response({ success: true });
   } catch (error) {
     return errorResponse(error);

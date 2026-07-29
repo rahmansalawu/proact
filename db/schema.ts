@@ -61,6 +61,23 @@ export const recordAttachments = sqliteTable("record_attachments", {
   index("record_attachments_record_idx").on(table.organisationId, table.recordId),
 ]);
 
+export const recordActions = sqliteTable("record_actions", {
+  id: text("id").primaryKey(),
+  organisationId: text("organisation_id").notNull().references(() => organisations.id),
+  recordId: text("record_id").notNull().references(() => moduleRecords.id),
+  description: text("description").notNull(),
+  owner: text("owner").notNull(),
+  dueDate: text("due_date"),
+  status: text("status").notNull().default("Open"),
+  priority: text("priority").notNull().default("Medium"),
+  createdBy: text("created_by").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("record_actions_record_idx").on(table.organisationId, table.recordId),
+  index("record_actions_due_idx").on(table.organisationId, table.status, table.dueDate),
+]);
+
 export const featureEntitlements = sqliteTable("feature_entitlements", {
   id: text("id").primaryKey(),
   tier: text("tier").notNull(),

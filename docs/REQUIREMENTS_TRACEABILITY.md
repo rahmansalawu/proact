@@ -21,7 +21,7 @@ This document is the implementation ledger for the product blueprint. Status val
 | Encrypted sensitive fields | Not started | Encryption and key-rotation design verified |
 | Structured API validation | Implemented | Zod schemas validate create, update and delete payloads, enforce module statuses and limit payload size |
 | File evidence storage | In progress | Tenant-scoped local SQLite attachments, MIME/size limits and audited downloads are implemented; hosted object storage and malware scanning remain |
-| Background jobs and alerts | Not started | Retry, idempotency and dead-letter tests |
+| Background jobs and alerts | In progress | Live action due/overdue calculations are implemented; scheduled outbound alerts, retries and dead-letter handling remain |
 | Subscription billing | Not started | Sandbox upgrade, downgrade and failure-grace tests |
 | Data export and portability | Not started | User and organisation export packages |
 | GDPR access and anonymisation | Not started | DSR workflow tests with retained legal records |
@@ -33,8 +33,8 @@ This document is the implementation ledger for the product blueprint. Status val
 |---|---|---|---|---|---|---|---|---|
 | Dashboard & Analytics | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
 | Risk Management & RAMS | Implemented | Implemented | Risk scoring and approval gates | Implemented | Implemented | CSV | Partial | In progress |
-| Incident Management | Implemented | Implemented | Investigation and closure gates | Implemented | Implemented | CSV | Partial | In progress |
-| Inspection Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
+| Incident Management | Implemented | Implemented | Investigation, actions and closure gates | Implemented | Implemented | CSV | Partial | In progress |
+| Inspection Management | Implemented | Implemented | Findings, actions and completion gate | Implemented | Implemented | CSV | Partial | In progress |
 | Training Management | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |
 | Legal Compliance Library | Implemented | Implemented | UK starter register | Implemented | Implemented | CSV | Partial | In progress |
 | Management System / ISO | Implemented | Implemented | Partial | Implemented | Implemented | CSV | Partial | In progress |

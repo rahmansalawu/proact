@@ -438,6 +438,13 @@ button, .record-card, .framework-card { transition: .17s ease; }
 .evidence-list article > svg { color: var(--blue); }.evidence-list a, .evidence-list span { display: block; }.evidence-list a { color: #2b6478; font-size: 8.5px; font-weight: 750; }.evidence-list span { margin-top: 3px; color: var(--muted); font-size: 7px; }
 .evidence-list button { width: 25px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--red); cursor: pointer; }
 .evidence-list button:hover { background: var(--red-soft); }.evidence-empty { margin: 0; padding: 13px 11px; border-top: 1px solid #edf1f2; color: var(--muted); font-size: 8px; }
+.action-section { margin: 0 22px 16px; border: 1px solid #dfe7e9; border-radius: 9px; overflow: hidden; }
+.action-heading { min-height: 45px; padding: 9px 11px; display: flex; align-items: center; background: #f8fafb; }.action-heading strong, .action-heading span { display: block; }.action-heading strong { font-size: 9px; }.action-heading span { margin-top: 3px; color: var(--muted); font-size: 7.5px; }
+.action-section form { padding: 9px 10px; border-top: 1px solid #edf1f2; }.action-section textarea { width: 100%; padding: 7px; resize: vertical; border: 1px solid #dbe4e7; border-radius: 6px; color: var(--ink); font: inherit; font-size: 8.5px; }
+.action-section form > div { margin-top: 6px; display: grid; grid-template-columns: 1fr 105px 80px auto; gap: 5px; }.action-section input, .action-section select { min-width: 0; height: 30px; padding: 0 6px; border: 1px solid #dbe4e7; border-radius: 6px; background: white; color: #45606a; font-size: 7.5px; }
+.action-section form button { height: 30px; padding: 0 8px; }
+.action-list article { min-height: 52px; padding: 7px 9px; display: grid; grid-template-columns: 3px 1fr 86px 23px; align-items: center; gap: 7px; border-top: 1px solid #edf1f2; }.action-list article > div strong, .action-list article > div span { display: block; }.action-list article > div strong { font-size: 8px; line-height: 1.4; }.action-list article > div span { margin-top: 3px; color: var(--muted); font-size: 7px; }
+.action-list select { width: 86px; height: 27px; border: 1px solid #dbe4e7; border-radius: 5px; background: white; color: #4b6570; font-size: 7px; }.action-list article > button { width: 23px; height: 23px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--red); cursor: pointer; }
 .drawer-proof { margin: 0 22px 16px; padding: 11px; display: flex; align-items: flex-start; gap: 8px; border: 1px solid #d7e8ed; border-radius: 8px; background: #f0f7f9; color: #4b6b77; font-size: 8.5px; line-height: 1.45; }
 .drawer-proof svg { flex: 0 0 auto; color: #2d7b96; }
 .danger-button { margin: 0 22px; height: 36px; padding: 0 11px; display: flex; align-items: center; gap: 6px; border: 1px solid #edc8c4; border-radius: 7px; background: white; color: var(--red); font-size: 9px; font-weight: 750; cursor: pointer; }
@@ -467,4 +474,5 @@ button, .record-card, .framework-card { transition: .17s ease; }
   .drawer-summary > span:last-child { flex-basis: 100%; margin: 3px 0 0; }
   .drawer-actions { flex-wrap: wrap; }
   .drawer-actions > label { margin-left: 0; }
+  .action-section form > div { grid-template-columns: 1fr 1fr; }
 }

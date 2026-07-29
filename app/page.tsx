@@ -58,12 +58,26 @@ type EvidenceAttachment = {
   created_at: string;
 };
 
+type RecordAction = {
+  id: string;
+  record_id: string;
+  description: string;
+  owner: string;
+  due_date: string | null;
+  status: "Open" | "In progress" | "Closed";
+  priority: ProductRecord["priority"];
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type StateResponse = {
   organisation: { id: string; name: string; subscription_tier: string; jurisdiction: string };
   actor: { id: string; displayName: string; email: string; role: string };
   records: ProductRecord[];
   audit: AuditRecord[];
   attachments: EvidenceAttachment[];
+  actions: RecordAction[];
 };
 
 const completionStatuses = new Set(["Approved", "Completed", "Closed", "Conforming", "Published", "Verified", "All clear"]);
@@ -301,6 +315,67 @@ export default function Home() {
     }
   };
 
+  const createRecordAction = async (record: ProductRecord, input: { description: string; owner: string; dueDate: string | null; priority: ProductRecord["priority"] }) => {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/state", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "create_action", recordId: record.id, ...input }),
+      });
+      const data = await response.json() as { action?: RecordAction; error?: { message: string } };
+      if (!response.ok || !data.action) throw new Error(data.error?.message ?? "The corrective action could not be created.");
+      setState((current) => current ? { ...current, actions: [data.action!, ...current.actions] } : current);
+      setToast(`Corrective action added to ${record.reference}.`);
+      void loadAudit();
+    } catch (requestError) {
+      setToast(requestError instanceof Error ? requestError.message : "The corrective action could not be created.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateRecordAction = async (action: RecordAction, status: RecordAction["status"]) => {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/state", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actionId: action.id, status }),
+      });
+      const data = await response.json() as { action?: RecordAction; error?: { message: string } };
+      if (!response.ok || !data.action) throw new Error(data.error?.message ?? "The corrective action could not be updated.");
+      setState((current) => current ? { ...current, actions: current.actions.map((item) => item.id === data.action!.id ? data.action! : item) } : current);
+      setToast(`Action moved to ${status.toLowerCase()}.`);
+      void loadAudit();
+    } catch (requestError) {
+      setToast(requestError instanceof Error ? requestError.message : "The corrective action could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteRecordAction = async (action: RecordAction) => {
+    if (!window.confirm("Delete this corrective action? Its audit history will be retained.")) return;
+    setSaving(true);
+    try {
+      const response = await fetch("/api/state", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actionId: action.id }),
+      });
+      const data = await response.json() as { error?: { message: string } };
+      if (!response.ok) throw new Error(data.error?.message ?? "The corrective action could not be deleted.");
+      setState((current) => current ? { ...current, actions: current.actions.filter((item) => item.id !== action.id) } : current);
+      setToast("Corrective action deleted; its audit event was retained.");
+      void loadAudit();
+    } catch (requestError) {
+      setToast(requestError instanceof Error ? requestError.message : "The corrective action could not be deleted.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const exportCsv = () => {
     const headers = ["Reference", "Title", "Status", "Priority", "Owner", "Due date", ...MODULE_MAP[activeModule].fields.map((field) => field.label)];
     const rows = visibleRecords.map((record) => [
@@ -356,7 +431,7 @@ export default function Home() {
     </div>
 
     {editorOpen && <RecordEditor definition={activeDefinition} record={editing} actorName={actor?.displayName ?? ""} saving={saving} onClose={() => { setEditorOpen(false); setEditing(null); }} onSave={saveRecord} />}
-    {selected && <RecordDrawer record={selected} definition={MODULE_MAP[selected.module]} attachments={state?.attachments.filter((item) => item.record_id === selected.id) ?? []} canDeleteEvidence={actor?.role === "CompanyAdmin" || actor?.role === "SuperAdmin"} saving={saving} onClose={() => setSelected(null)} onEdit={() => openEdit(selected)} onDelete={() => void deleteRecord(selected)} onStatus={(status) => void changeStatus(selected, status)} onUpload={(file) => void uploadEvidence(selected, file)} onDeleteEvidence={(attachment) => void deleteEvidence(attachment)} />}
+    {selected && <RecordDrawer record={selected} definition={MODULE_MAP[selected.module]} attachments={state?.attachments.filter((item) => item.record_id === selected.id) ?? []} actions={state?.actions.filter((item) => item.record_id === selected.id) ?? []} canDeleteEvidence={actor?.role === "CompanyAdmin" || actor?.role === "SuperAdmin"} saving={saving} onClose={() => setSelected(null)} onEdit={() => openEdit(selected)} onDelete={() => void deleteRecord(selected)} onStatus={(status) => void changeStatus(selected, status)} onUpload={(file) => void uploadEvidence(selected, file)} onDeleteEvidence={(attachment) => void deleteEvidence(attachment)} onCreateAction={(input) => void createRecordAction(selected, input)} onUpdateAction={(action, status) => void updateRecordAction(action, status)} onDeleteAction={(action) => void deleteRecordAction(action)} />}
     {auditOpen && <AuditDrawer audit={state?.audit ?? []} records={state?.records ?? []} onClose={() => setAuditOpen(false)} />}
     {toast && <div className="toast" role="status"><CheckCircle2 size={18} />{toast}<button onClick={() => setToast("")} aria-label="Dismiss notification"><X size={16} /></button></div>}
   </div>;
@@ -373,9 +448,10 @@ function LoadingState() {
 
 function Dashboard({ state, onNavigate, onCreate }: { state: StateResponse; onNavigate: (moduleKey: ModuleKey) => void; onCreate: (moduleKey: ModuleKey) => void }) {
   const records = state.records;
+  const actions = state.actions ?? [];
   const now = new Date();
-  const overdue = records.filter((record) => record.dueDate && new Date(record.dueDate) < now && !completionStatuses.has(record.status)).length;
-  const priority = records.filter((record) => record.priority === "Critical" || record.priority === "High" || riskStatuses.has(record.status)).length;
+  const overdue = records.filter((record) => record.dueDate && new Date(record.dueDate) < now && !completionStatuses.has(record.status)).length + actions.filter((action) => action.due_date && new Date(action.due_date) < now && action.status !== "Closed").length;
+  const priority = records.filter((record) => record.priority === "Critical" || record.priority === "High" || riskStatuses.has(record.status)).length + actions.filter((action) => action.status !== "Closed" && (action.priority === "High" || action.priority === "Critical")).length;
   const completed = records.filter((record) => completionStatuses.has(record.status)).length;
   const assurance = records.length ? Math.round((completed / records.length) * 100) : 0;
   const activeModules = new Set(records.map((record) => record.module)).size;
@@ -490,16 +566,32 @@ function RiskPreview({ payload }: { payload: Record<string, unknown> }) {
   return <div className={`risk-preview ${rating.toLowerCase().replace(" ", "-")}`}><span>Initial risk</span><strong>{score || "—"}</strong><b>{rating}</b><span>Residual risk</span><strong>{residualScore || "—"}</strong><b>{residualRating}</b><small>Likelihood × consequence. Approval requires recorded residual risk and review by a competent person.</small></div>;
 }
 
-function RecordDrawer({ record, definition, attachments, canDeleteEvidence, saving, onClose, onEdit, onDelete, onStatus, onUpload, onDeleteEvidence }: { record: ProductRecord; definition: ModuleDefinition; attachments: EvidenceAttachment[]; canDeleteEvidence: boolean; saving: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onStatus: (status: string) => void; onUpload: (file: File) => void; onDeleteEvidence: (attachment: EvidenceAttachment) => void }) {
+function RecordDrawer({ record, definition, attachments, actions, canDeleteEvidence, saving, onClose, onEdit, onDelete, onStatus, onUpload, onDeleteEvidence, onCreateAction, onUpdateAction, onDeleteAction }: { record: ProductRecord; definition: ModuleDefinition; attachments: EvidenceAttachment[]; actions: RecordAction[]; canDeleteEvidence: boolean; saving: boolean; onClose: () => void; onEdit: () => void; onDelete: () => void; onStatus: (status: string) => void; onUpload: (file: File) => void; onDeleteEvidence: (attachment: EvidenceAttachment) => void; onCreateAction: (input: { description: string; owner: string; dueDate: string | null; priority: ProductRecord["priority"] }) => void; onUpdateAction: (action: RecordAction, status: RecordAction["status"]) => void; onDeleteAction: (action: RecordAction) => void }) {
   return <div className="drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="record-drawer" role="dialog" aria-modal="true" aria-labelledby="record-title">
     <div className="drawer-header"><div><span className="eyebrow">{record.reference}</span><h2 id="record-title">{record.title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close record"><X size={19} /></button></div>
     <div className="drawer-summary"><PriorityPill priority={record.priority} /><StatusPill status={record.status} /><span>Updated {formatDate(record.updatedAt)}</span></div>
     <div className="drawer-actions"><button className="secondary-button" onClick={onEdit}><Pencil size={15} /> Edit</button><label>Move to<select aria-label="Change record status" value={record.status} onChange={(event) => onStatus(event.target.value)} disabled={saving}>{definition.statuses.map((status) => <option key={status}>{status}</option>)}</select></label></div>
     <dl className="record-details"><div><dt>Owner</dt><dd>{record.owner}</dd></div><div><dt>Due date</dt><dd>{formatDate(record.dueDate)}</dd></div>{definition.fields.map((field) => <div key={field.key}><dt>{field.label}</dt><dd>{field.key === "sourceUrl" && typeof record.payload[field.key] === "string" && record.payload[field.key] ? <a href={String(record.payload[field.key])} target="_blank" rel="noreferrer">Open official source</a> : pretty(record.payload[field.key])}</dd></div>)}</dl>
     <section className="evidence-section"><div className="evidence-heading"><div><strong>Evidence files</strong><span>PDF, JPG, PNG, WebP, TXT or CSV · maximum 2 MB</span></div><label className={`secondary-button ${saving ? "disabled" : ""}`}><Plus size={14} /> Attach<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.csv" disabled={saving} onChange={(event) => { const file = event.target.files?.[0]; if (file) onUpload(file); event.currentTarget.value = ""; }} /></label></div>{attachments.length ? <div className="evidence-list">{attachments.map((attachment) => <article key={attachment.id}><FileClock size={17} /><div><a href={`/api/state?attachment=${encodeURIComponent(attachment.id)}`}>{attachment.file_name}</a><span>{attachment.mime_type} · {Math.ceil(attachment.size_bytes / 1024)} KB</span></div>{canDeleteEvidence && <button onClick={() => onDeleteEvidence(attachment)} disabled={saving} aria-label={`Delete ${attachment.file_name}`}><Trash2 size={14} /></button>}</article>)}</div> : <p className="evidence-empty">No evidence attached yet.</p>}</section>
+    <ActionPanel record={record} actions={actions} saving={saving} canDelete={canDeleteEvidence} onCreate={onCreateAction} onUpdate={onUpdateAction} onDelete={onDeleteAction} />
     <div className="drawer-proof"><ShieldCheck size={17} /><span>Changes to this record are tenant-scoped and appended to the immutable audit log.</span></div>
     <button className="danger-button" onClick={onDelete} disabled={saving}><Trash2 size={15} /> Delete record</button>
   </aside></div>;
+}
+
+function ActionPanel({ record, actions, saving, canDelete, onCreate, onUpdate, onDelete }: { record: ProductRecord; actions: RecordAction[]; saving: boolean; canDelete: boolean; onCreate: (input: { description: string; owner: string; dueDate: string | null; priority: ProductRecord["priority"] }) => void; onUpdate: (action: RecordAction, status: RecordAction["status"]) => void; onDelete: (action: RecordAction) => void }) {
+  const [description, setDescription] = useState("");
+  const [owner, setOwner] = useState(record.owner);
+  const [dueDate, setActionDueDate] = useState("");
+  const [priority, setActionPriority] = useState<ProductRecord["priority"]>("Medium");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!description.trim() || !owner.trim()) return;
+    onCreate({ description: description.trim(), owner: owner.trim(), dueDate: dueDate || null, priority });
+    setDescription("");
+    setActionDueDate("");
+  };
+  return <section className="action-section"><div className="action-heading"><div><strong>Corrective actions</strong><span>{actions.filter((item) => item.status !== "Closed").length} open · {actions.length} total</span></div></div><form onSubmit={submit}><textarea aria-label="Corrective action description" rows={2} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the action required..." maxLength={500} required /><div><input aria-label="Action owner" value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Owner" required /><input aria-label="Action due date" type="date" value={dueDate} onChange={(event) => setActionDueDate(event.target.value)} /><select aria-label="Action priority" value={priority} onChange={(event) => setActionPriority(event.target.value as ProductRecord["priority"])}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select><button className="primary-button" disabled={saving}><Plus size={14} /> Add</button></div></form>{actions.length ? <div className="action-list">{actions.map((action) => <article key={action.id}><span className={`priority-mark ${action.priority.toLowerCase()}`} /><div><strong>{action.description}</strong><span>{action.owner} · {formatDate(action.due_date)}</span></div><select aria-label={`Status for ${action.description}`} value={action.status} onChange={(event) => onUpdate(action, event.target.value as RecordAction["status"])} disabled={saving}><option>Open</option><option>In progress</option><option>Closed</option></select>{canDelete && <button onClick={() => onDelete(action)} disabled={saving} aria-label={`Delete action ${action.description}`}><Trash2 size={13} /></button>}</article>)}</div> : <p className="evidence-empty">No corrective actions assigned.</p>}</section>;
 }
 
 function AuditDrawer({ audit, records, onClose }: { audit: AuditRecord[]; records: ProductRecord[]; onClose: () => void }) {

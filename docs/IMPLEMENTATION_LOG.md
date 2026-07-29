@@ -39,6 +39,11 @@ Implemented:
 - Added tenant-scoped local evidence attachments for every controlled record.
 - Added allow-listed PDF/image/text/CSV evidence types, a 2 MB limit, filename sanitisation and server-side decoded-size verification.
 - Added evidence metadata listing without file-body exposure, authenticated downloads with no-store/nosniff headers, administrator deletion and immutable upload/delete audit events.
+- Added shared corrective actions with owner, due date, priority and Open / In progress / Closed lifecycle.
+- Added tenant-scoped action creation, update, deletion and immutable action audit events.
+- Added server completion gates that prevent controlled record closure or approval while corrective actions remain open.
+- Added action workload to live dashboard priority and overdue indicators.
+- Fixed partial record updates so omitted defaulted fields cannot overwrite the existing payload or priority.
 - Replaced the obsolete starter test suite.
 - Upgraded the framework, React server runtime, Vite and Cloudflare tooling to patched releases.
 - Pinned patched transitive PostCSS, Sharp, esbuild and brace-expansion releases.
@@ -64,12 +69,14 @@ Verified:
 - Strict TypeScript checking, production build and three automated product tests passed.
 - Evidence upload, metadata listing, safe download and deletion passed against local D1.
 - Disallowed executable MIME evidence returned HTTP 400, and normal workspace state did not expose base64 file content.
+- An open corrective action blocked incident closure with HTTP 400; Open to In progress to Closed then allowed record closure.
+- Partial status updates preserved the complete incident investigation payload.
 
 Still required for module completeness:
 
 - Module-specific relational data models beyond the shared controlled-record foundation.
 - Hosted object storage, malware scanning and certificate OCR (local SQLite evidence storage is implemented).
-- Incident witness management, action assignment and regulatory submission integration.
+- Incident witness management and regulatory submission integration (assignable corrective actions are implemented).
 - RAMS electronic signatures, revision history, workforce acknowledgements and PDF generation.
 - Inspection checklist execution and photo findings.
 - Training course/test engine, certificate OCR and expiry jobs.
