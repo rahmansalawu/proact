@@ -58,6 +58,8 @@ test("enforces UK legal and module-specific workflow controls", async () => {
   assert.match(route, /record_actions/);
   assert.match(route, /ACTION_GATE_STATUSES/);
   assert.match(route, /Close all corrective actions/);
+  assert.match(route, /backupRequested/);
+  assert.match(route, /schemaVersion: 3/);
   assert.match(legal, /legislation\.gov\.uk/);
   assert.match(legal, /hse\.gov\.uk\/riddor/);
   assert.match(modules, /residualLikelihood/);

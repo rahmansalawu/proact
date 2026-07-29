@@ -441,6 +441,7 @@ export async function GET(request: Request) {
     const selectedModule = url.searchParams.get("module");
     const includeAudit = url.searchParams.get("audit") === "1";
     const attachmentId = url.searchParams.get("attachment");
+    const backupRequested = url.searchParams.get("backup") === "1";
     if (selectedModule && !isModuleKey(selectedModule)) return response({ error: { code: "INVALID_MODULE", message: "Unknown module." } }, 400);
     if (attachmentId) {
       const attachment = await db().prepare(
@@ -453,6 +454,41 @@ export async function GET(request: Request) {
           "content-type": attachment.mime_type,
           "content-length": String(bytes.byteLength),
           "content-disposition": `attachment; filename="${safeFileName(attachment.file_name).replaceAll('"', "")}"`,
+          "cache-control": "private, no-store",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    }
+    if (backupRequested) {
+      if (!["SuperAdmin", "CompanyAdmin"].includes(actor.role)) {
+        return response({ error: { code: "FORBIDDEN", message: "Only an administrator can export a full backup." } }, 403);
+      }
+      const database = db();
+      const [organisation, users, records, actions, attachments, audits] = await Promise.all([
+        database.prepare("SELECT * FROM organisations WHERE id = ?").bind(actor.organisationId).first(),
+        database.prepare("SELECT id, organisation_id, email, display_name, role, is_active, created_at, updated_at FROM users WHERE organisation_id = ?").bind(actor.organisationId).all(),
+        database.prepare("SELECT * FROM module_records WHERE organisation_id = ? ORDER BY created_at").bind(actor.organisationId).all(),
+        database.prepare("SELECT * FROM record_actions WHERE organisation_id = ? ORDER BY created_at").bind(actor.organisationId).all(),
+        database.prepare("SELECT * FROM record_attachments WHERE organisation_id = ? ORDER BY created_at").bind(actor.organisationId).all(),
+        database.prepare("SELECT * FROM audit_logs WHERE organisation_id = ? ORDER BY created_at").bind(actor.organisationId).all(),
+      ]);
+      const exportedAt = new Date().toISOString();
+      const backup = {
+        product: "ProAct HSE Pro",
+        schemaVersion: 3,
+        jurisdiction: "UK",
+        exportedAt,
+        organisation,
+        users: users.results,
+        records: records.results,
+        actions: actions.results,
+        attachments: attachments.results,
+        auditLogs: audits.results,
+      };
+      return new Response(JSON.stringify(backup, null, 2), {
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "content-disposition": `attachment; filename="proact-backup-${exportedAt.slice(0, 10)}.json"`,
           "cache-control": "private, no-store",
           "x-content-type-options": "nosniff",
         },

@@ -23,7 +23,7 @@ This document is the implementation ledger for the product blueprint. Status val
 | File evidence storage | In progress | Tenant-scoped local SQLite attachments, MIME/size limits and audited downloads are implemented; hosted object storage and malware scanning remain |
 | Background jobs and alerts | In progress | Live action due/overdue calculations are implemented; scheduled outbound alerts, retries and dead-letter handling remain |
 | Subscription billing | Not started | Sandbox upgrade, downgrade and failure-grace tests |
-| Data export and portability | Not started | User and organisation export packages |
+| Data export and portability | In progress | Module CSV and administrator full JSON backup exports are implemented; restore/import remains |
 | GDPR access and anonymisation | Not started | DSR workflow tests with retained legal records |
 | Offline incident/inspection capture | Not started | Queue, reconnect and conflict tests |
 
@@ -55,7 +55,7 @@ This document is the implementation ledger for the product blueprint. Status val
 | Legal content reviewed in every launch jurisdiction | Externally blocked |
 | Payment and escrow sandbox journeys verified | Externally blocked |
 | Independent penetration test complete | Externally blocked |
-| Backup and restore drill complete | Not started |
+| Backup and restore drill complete | In progress (export verified; restore not implemented) |
 | RTO and RPO demonstrated | Not started |
 | Closed beta UAT complete | Externally blocked |
 | Production launch approval | Externally blocked |

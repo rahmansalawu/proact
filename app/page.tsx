@@ -392,6 +392,29 @@ export default function Home() {
     setToast(`${visibleRecords.length} records exported to CSV.`);
   };
 
+  const exportFullBackup = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/state?backup=1", { cache: "no-store" });
+      if (!response.ok) {
+        const data = await response.json() as { error?: { message: string } };
+        throw new Error(data.error?.message ?? "The backup could not be generated.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `proact-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setToast("Full backup downloaded. Store it securely; it contains organisation data.");
+    } catch (requestError) {
+      setToast(requestError instanceof Error ? requestError.message : "The backup could not be generated.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const actor = state?.actor;
   const activeDefinition = MODULE_MAP[activeModule];
 
@@ -418,6 +441,7 @@ export default function Home() {
         <div className="top-actions">
           {!online && <span className="offline-badge"><CloudOff size={14} /> Offline</span>}
           <span className="uk-badge">UK</span>
+          {(actor?.role === "CompanyAdmin" || actor?.role === "SuperAdmin") && <button className="backup-button" onClick={() => void exportFullBackup()} disabled={saving}><Download size={14} /> Backup</button>}
           <button className="icon-button" onClick={() => setToast("You’re up to date.")} aria-label="Notifications"><Bell size={18} /></button>
           <div className="top-avatar">{actor ? initials(actor.displayName) : "..."}</div>
         </div>

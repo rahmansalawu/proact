@@ -44,6 +44,8 @@ Implemented:
 - Added server completion gates that prevent controlled record closure or approval while corrective actions remain open.
 - Added action workload to live dashboard priority and overdue indicators.
 - Fixed partial record updates so omitted defaulted fields cannot overwrite the existing payload or priority.
+- Added an administrator-only full JSON backup containing organisation, users/roles, records, actions, attachment contents and immutable audit history.
+- Added private no-store, nosniff and attachment-disposition controls to backup downloads.
 - Replaced the obsolete starter test suite.
 - Upgraded the framework, React server runtime, Vite and Cloudflare tooling to patched releases.
 - Pinned patched transitive PostCSS, Sharp, esbuild and brace-expansion releases.
@@ -71,6 +73,7 @@ Verified:
 - Disallowed executable MIME evidence returned HTTP 400, and normal workspace state did not expose base64 file content.
 - An open corrective action blocked incident closure with HTTP 400; Open to In progress to Closed then allowed record closure.
 - Partial status updates preserved the complete incident investigation payload.
+- Full backup returned HTTP 200 with schema version, UK jurisdiction, every data section and 43 retained audit events.
 
 Still required for module completeness:
 
@@ -89,5 +92,6 @@ Still required for module completeness:
 - Community comments, moderation and media handling.
 - Consultant profiles, messaging, milestone, escrow and rating workflows.
 - Feature entitlement enforcement.
+- Backup restore/import workflow (full JSON export is implemented).
 - GDPR self-service workflows.
 - External release testing, security review and legal validation.
